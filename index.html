@@ -1,0 +1,821 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Investment Tracker</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js for graphing -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3"></script>
+    <style>
+      /* Custom font and minor style adjustments */
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+      body {
+        font-family: "Inter", sans-serif;
+        background-color: #f8fafc; /* Tailwind's gray-50 */
+      }
+      .chart-container {
+        position: relative;
+        height: 60vh;
+        width: 100%;
+      }
+    </style>
+  </head>
+  <body class="text-gray-800">
+    <div class="container mx-auto p-4 md:p-8 max-w-7xl">
+      <!-- Header -->
+      <header class="mb-8 flex items-start justify-between">
+        <div>
+          <h1 class="text-4xl font-bold text-gray-900">Investment Dashboard</h1>
+          <p class="text-lg text-gray-600 mt-2">
+            Upload your portfolio CSV to visualize growth over time.
+          </p>
+        </div>
+        <div class="relative">
+          <button
+            id="navMenuButton"
+            type="button"
+            aria-label="Open menu"
+            aria-haspopup="true"
+            aria-expanded="false"
+            class="p-2 rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          </button>
+          <div
+            id="navMenu"
+            class="hidden absolute right-0 mt-2 w-40 bg-white border border-gray-200 rounded-lg shadow-lg z-10"
+            role="menu"
+          >
+            <button data-view="home" class="nav-item w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-t-lg" role="menuitem">Home</button>
+            <button data-view="activity" class="nav-item w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-b-lg" role="menuitem">Activity</button>
+          </div>
+        </div>
+      </header>
+
+      <!-- Activity view -->
+      <section id="activityView" class="hidden">
+        <div id="freshnessStrip" class="mb-6 px-4 py-2 bg-gray-100 border border-gray-200 rounded-lg text-sm text-gray-700 hidden">
+          <span id="freshnessText"></span>
+        </div>
+        <div id="freshnessWarnings" class="mb-6 space-y-2"></div>
+
+        <div id="activityHistogram" class="mb-6 hidden">
+          <div class="text-xs text-gray-500 mb-1">Activity coverage by month <span class="text-gray-400">(yellow = no entries; hover for counts)</span></div>
+          <div id="histogramBars" class="flex items-end gap-0.5 h-12 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1"></div>
+          <div id="histogramAxis" class="flex justify-between text-[10px] text-gray-400 mt-1 px-2"></div>
+        </div>
+
+        <details id="unrecognizedPanel" class="mb-6 hidden">
+          <summary class="cursor-pointer px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
+            <span id="unrecognizedBadge"></span>
+          </summary>
+          <div id="unrecognizedList" class="mt-2 max-h-64 overflow-y-auto bg-white border border-gray-200 rounded-lg p-3 text-xs font-mono"></div>
+        </details>
+      </section>
+
+      <main id="homeView" class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <!-- Left Column: Controls and Upload -->
+        <div
+          class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-sm border border-gray-200"
+        >
+          <h2 class="text-2xl font-semibold mb-4 text-gray-800">Controls</h2>
+
+          <!-- CSV Upload Form -->
+          <form id="uploadForm" class="mb-6">
+            <label
+              for="csvFile"
+              class="block text-sm font-medium text-gray-700 mb-2"
+              >Upload Holdings or Activity CSV(s)</label
+            >
+            <input
+              type="file"
+              id="csvFile"
+              name="investment_csv"
+              accept=".csv"
+              multiple
+              class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition-colors"
+              required
+            />
+            <button
+              type="submit"
+              id="uploadButton"
+              class="mt-4 w-full bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all disabled:bg-gray-400"
+            >
+              Upload and Refresh
+            </button>
+          </form>
+          <div id="statusMessage" class="text-center text-sm"></div>
+
+          <hr class="my-6" />
+
+          <!-- Account Filters -->
+          <div>
+            <h3 class="text-lg font-semibold text-gray-800 mb-3">
+              Filter Accounts
+            </h3>
+            <div id="accountFilters" class="space-y-2">
+              <p class="text-gray-500 text-sm">Upload data to see filters.</p>
+            </div>
+          </div>
+
+          <hr class="my-6" />
+
+          <!-- Benchmark Indexes -->
+          <div>
+            <h3 class="text-lg font-semibold text-gray-800 mb-2">
+              Compare to Indexes
+            </h3>
+            <p class="text-xs text-gray-500 mb-3">
+              Simulated parallel index portfolio — same deposits &amp; withdrawals as yours
+            </p>
+            <div id="scopeIndicator" class="hidden flex items-center justify-between text-xs bg-purple-50 text-purple-800 border border-purple-200 rounded px-2 py-1 mb-2">
+              <span></span>
+              <button id="scopeReset" class="ml-2 underline">reset to whole portfolio</button>
+            </div>
+            <div id="benchmarkToggles" class="space-y-2">
+              <p class="text-gray-500 text-sm">Loading benchmarks...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Column: Chart -->
+        <div
+          class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-gray-200"
+        >
+          <div class="chart-container">
+            <canvas id="investmentChart"></canvas>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <!-- Recent Uploads Section -->
+    <div id="recentUploadsSection" class="container mx-auto p-4 max-w-7xl mt-8">
+      <h2 class="text-2xl font-semibold mb-4 text-gray-800">Recent Uploads</h2>
+      <div
+        id="uploadsList"
+        class="bg-white rounded-xl shadow-sm border border-gray-200 p-4"
+      >
+        <p class="text-gray-500 text-sm">Loading recent uploads...</p>
+      </div>
+    </div>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const uploadForm = document.getElementById("uploadForm");
+        const uploadButton = document.getElementById("uploadButton");
+        const statusMessage = document.getElementById("statusMessage");
+        const accountFiltersContainer =
+          document.getElementById("accountFilters");
+        const ctx = document.getElementById("investmentChart").getContext("2d");
+        Chart.register(window['chartjs-plugin-annotation']);
+        let investmentChart;
+
+        let currentScope = "all"; // "all" or an account name
+
+        // --- Top-right nav menu / view switching ---
+        const navMenuButton = document.getElementById("navMenuButton");
+        const navMenu = document.getElementById("navMenu");
+        const homeView = document.getElementById("homeView");
+        const activityView = document.getElementById("activityView");
+        const recentUploadsSection = document.getElementById("recentUploadsSection");
+
+        const setView = (view) => {
+          const isActivity = view === "activity";
+          activityView.classList.toggle("hidden", !isActivity);
+          homeView.classList.toggle("hidden", isActivity);
+          recentUploadsSection.classList.toggle("hidden", isActivity);
+        };
+
+        navMenuButton.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const open = navMenu.classList.toggle("hidden");
+          navMenuButton.setAttribute("aria-expanded", String(!open));
+        });
+
+        navMenu.querySelectorAll(".nav-item").forEach((item) => {
+          item.addEventListener("click", () => {
+            setView(item.dataset.view);
+            navMenu.classList.add("hidden");
+            navMenuButton.setAttribute("aria-expanded", "false");
+          });
+        });
+
+        document.addEventListener("click", (e) => {
+          if (!navMenu.classList.contains("hidden") && !navMenu.contains(e.target) && e.target !== navMenuButton) {
+            navMenu.classList.add("hidden");
+            navMenuButton.setAttribute("aria-expanded", "false");
+          }
+        });
+
+        // --- Scope indicator (must be declared before populateFilters runs) ---
+        const scopeIndicator = document.getElementById("scopeIndicator");
+        const scopeIndicatorText = scopeIndicator.querySelector("span");
+        document.getElementById("scopeReset").addEventListener("click", async () => {
+          currentScope = "all";
+          scopeIndicator.classList.add("hidden");
+          await refreshActiveBenchmarks();
+        });
+
+        // --- Helpers ---
+        const esc = (s) => String(s == null ? "" : s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+
+        // --- Chart Configuration ---
+        const chartConfig = {
+          type: "line",
+          data: {
+            labels: [],
+            datasets: [],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              x: {
+                type: "time",
+                stacked: true,
+                time: {
+                  unit: "day",
+                  tooltipFormat: "yyyy-MM-dd",
+                },
+                title: {
+                  display: true,
+                  text: "Date",
+                },
+              },
+              y: {
+                stacked: true,
+                title: {
+                  display: true,
+                  text: "Total Value (CAD)",
+                },
+                ticks: {
+                  callback: function (value, index, values) {
+                    return new Intl.NumberFormat("en-CA", {
+                      style: "currency",
+                      currency: "CAD",
+                    }).format(value);
+                  },
+                },
+              },
+            },
+            plugins: {
+              tooltip: {
+                mode: "index",
+                intersect: false,
+                callbacks: {
+                  label: function (context) {
+                    let label = context.dataset.label || "";
+                    if (label) {
+                      label += ": ";
+                    }
+                    if (context.parsed.y !== null) {
+                      label += new Intl.NumberFormat("en-CA", {
+                        style: "currency",
+                        currency: "CAD",
+                      }).format(context.parsed.y);
+                    }
+                    return label;
+                  },
+                },
+              },
+              legend: {
+                display: false, // We are creating a custom legend
+              },
+              annotation: { annotations: {} },
+            },
+            interaction: {
+              mode: "index",
+              intersect: false,
+            },
+          },
+        };
+
+        // --- Core Functions ---
+
+        /**
+         * Fetches data from the backend and updates the chart and filters.
+         */
+        let refreshData = async () => {
+          try {
+            statusMessage.textContent = "Loading chart data...";
+            const response = await fetch("/data");
+            if (!response.ok)
+              throw new Error(`HTTP error! status: ${response.status}`);
+
+            const data = await response.json();
+
+            // Clear active benchmarks (normalization may have changed)
+            Object.keys(activeBenchmarks).forEach((sym) => {
+              delete activeBenchmarks[sym];
+            });
+            document
+              .querySelectorAll('[id^="bm-"]')
+              .forEach((cb) => {
+                if (cb.type === "checkbox") cb.checked = false;
+              });
+
+            applyAnnotations();
+            updateChart(data);
+            populateFilters(data.datasets);
+
+            statusMessage.textContent =
+              data.labels.length > 0
+                ? "Data loaded."
+                : "No data found. Upload a CSV to begin.";
+          } catch (error) {
+            console.error("Error fetching data:", error);
+            statusMessage.textContent = "Error loading data.";
+          }
+        };
+
+        /**
+         * Updates the chart instance with new data.
+         */
+        const updateChart = (data) => {
+          if (investmentChart) {
+            investmentChart.data.labels = data.labels;
+            investmentChart.data.datasets = data.datasets;
+            investmentChart.update();
+          } else {
+            chartConfig.data = data;
+            investmentChart = new Chart(ctx, chartConfig);
+          }
+        };
+
+        /**
+         * Creates the checkboxes to filter accounts.
+         */
+        const populateFilters = (datasets) => {
+          accountFiltersContainer.innerHTML = ""; // Clear existing filters
+          if (datasets.length === 0) {
+            accountFiltersContainer.innerHTML =
+              '<p class="text-gray-500 text-sm">No accounts to display.</p>';
+            return;
+          }
+
+          datasets.forEach((dataset, index) => {
+            const isTotal = dataset.label === "Total";
+            const filterId = `filter-${index}`;
+            const wrapper = document.createElement("div");
+
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.id = filterId;
+            checkbox.checked = true;
+            checkbox.className =
+              "h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500";
+            checkbox.style.accentColor = dataset.borderColor;
+
+            const label = document.createElement("label");
+            label.htmlFor = filterId;
+            label.className = `ml-3 block text-sm ${isTotal ? "font-semibold text-gray-900" : "font-medium text-gray-700"}`;
+            label.textContent = dataset.label;
+
+            // Event listener to toggle dataset visibility
+            checkbox.addEventListener("change", () => {
+              investmentChart.setDatasetVisibility(index, checkbox.checked);
+              investmentChart.update();
+            });
+
+            wrapper.className = "flex items-center gap-2";
+            wrapper.appendChild(checkbox);
+            wrapper.appendChild(label);
+
+            // Total has no "drill in" — drilldown only makes sense per account.
+            if (!isTotal) {
+              const scopeBtn = document.createElement("button");
+              scopeBtn.type = "button";
+              scopeBtn.className = "ml-auto text-xs px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700";
+              scopeBtn.textContent = "drill in";
+              scopeBtn.addEventListener("click", async () => {
+                currentScope = dataset.label;
+                scopeIndicatorText.textContent = `Index comparison scope: ${currentScope}`;
+                scopeIndicator.classList.remove("hidden");
+                await refreshActiveBenchmarks();
+              });
+              wrapper.appendChild(scopeBtn);
+            }
+
+            accountFiltersContainer.appendChild(wrapper);
+          });
+        };
+
+        // --- Benchmark Index Comparison ---
+        const benchmarkTogglesContainer =
+          document.getElementById("benchmarkToggles");
+        const activeBenchmarks = {}; // symbol -> dataset
+        const benchmarkFetchControllers = {}; // symbol -> AbortController for the in-flight request
+
+        function startBenchmarkFetch(sym) {
+          // Cancel any prior in-flight fetch for this symbol.
+          if (benchmarkFetchControllers[sym]) {
+            benchmarkFetchControllers[sym].abort();
+          }
+          const controller = new AbortController();
+          benchmarkFetchControllers[sym] = controller;
+          return controller;
+        }
+
+        function endBenchmarkFetch(sym, controller) {
+          // Only clear if the controller is still the current one (avoid clearing a newer in-flight).
+          if (benchmarkFetchControllers[sym] === controller) {
+            delete benchmarkFetchControllers[sym];
+          }
+        }
+
+        const loadBenchmarkList = async () => {
+          try {
+            const res = await fetch("/api/benchmarks");
+            const benchmarks = await res.json();
+            benchmarkTogglesContainer.innerHTML = "";
+            benchmarks.forEach((bm) => {
+              const wrapper = document.createElement("div");
+              wrapper.className = "flex items-center";
+
+              const checkbox = document.createElement("input");
+              checkbox.type = "checkbox";
+              checkbox.id = `bm-${bm.symbol}`;
+              checkbox.className =
+                "h-4 w-4 rounded border-gray-300 focus:ring-blue-500";
+              checkbox.style.accentColor = bm.color;
+
+              const label = document.createElement("label");
+              label.htmlFor = `bm-${bm.symbol}`;
+              label.className =
+                "ml-3 block text-sm font-medium text-gray-700";
+              label.textContent = bm.label;
+
+              const spinner = document.createElement("span");
+              spinner.className = "ml-2 text-xs text-gray-400 hidden";
+              spinner.textContent = "Loading...";
+              spinner.id = `bm-spinner-${bm.symbol}`;
+
+              checkbox.addEventListener("change", async () => {
+                if (checkbox.checked) {
+                  spinner.classList.remove("hidden");
+                  const controller = startBenchmarkFetch(bm.symbol);
+                  try {
+                    const res = await fetch(
+                      `/api/benchmark/${encodeURIComponent(bm.symbol)}/simulated?scope=${encodeURIComponent(currentScope)}`,
+                      { signal: controller.signal },
+                    );
+                    const benchData = await res.json();
+                    if (benchData.data && benchData.data.length > 0) {
+                      // Bail if the user unchecked or fired another fetch while we were waiting.
+                      if (!checkbox.checked || benchmarkFetchControllers[bm.symbol] !== controller) return;
+                      const dataset = {
+                        label: `${benchData.label} (simulated)`,
+                        data: benchData.labels.map((l, i) => ({ x: l, y: parseFloat(benchData.data[i]) })),
+                        borderColor: benchData.color,
+                        backgroundColor: "transparent",
+                        borderWidth: 2,
+                        borderDash: [6, 3],
+                        fill: false,
+                        pointRadius: 0,
+                        tension: 0.1,
+                        yAxisID: "y",
+                        stack: `__benchmark_${bm.symbol}__`,
+                      };
+                      activeBenchmarks[bm.symbol] = { dataset, cashFlows: benchData.cashFlows || [] };
+                      investmentChart.data.datasets.push(dataset);
+                      applyAnnotations();
+                      investmentChart.update();
+                    }
+                  } catch (err) {
+                    if (err.name === "AbortError") return; // superseded by a newer request — fine
+                    console.error("Benchmark fetch error:", err);
+                    checkbox.checked = false;
+                  } finally {
+                    endBenchmarkFetch(bm.symbol, controller);
+                    spinner.classList.add("hidden");
+                  }
+                } else {
+                  // Cancel any in-flight request for this symbol before tearing down.
+                  if (benchmarkFetchControllers[bm.symbol]) {
+                    benchmarkFetchControllers[bm.symbol].abort();
+                    delete benchmarkFetchControllers[bm.symbol];
+                  }
+                  const entry = activeBenchmarks[bm.symbol];
+                  if (entry) {
+                    const idx = investmentChart.data.datasets.indexOf(entry.dataset);
+                    if (idx > -1) investmentChart.data.datasets.splice(idx, 1);
+                    delete activeBenchmarks[bm.symbol];
+                    applyAnnotations();
+                    investmentChart.update();
+                  }
+                }
+              });
+
+              wrapper.appendChild(checkbox);
+              wrapper.appendChild(label);
+              wrapper.appendChild(spinner);
+              benchmarkTogglesContainer.appendChild(wrapper);
+            });
+          } catch (err) {
+            benchmarkTogglesContainer.innerHTML =
+              '<p class="text-red-500 text-sm">Error loading benchmarks.</p>';
+          }
+        };
+
+        function applyAnnotations() {
+          if (!investmentChart) return;
+          // Union of cash flows across all active benchmarks (dedup by date+amount).
+          const seen = new Map();
+          for (const entry of Object.values(activeBenchmarks)) {
+            for (const cf of entry.cashFlows || []) {
+              const key = `${cf.date}|${cf.amount_cad}|${cf.account}`;
+              if (!seen.has(key)) seen.set(key, cf);
+            }
+          }
+          const ann = {};
+          let i = 0;
+          for (const cf of seen.values()) {
+            const isOutflow = cf.amount_cad < 0;
+            ann[`cf_${i++}`] = {
+              type: "line",
+              xMin: cf.date, xMax: cf.date,
+              borderColor: isOutflow ? "rgba(220, 38, 38, 0.4)" : "rgba(22, 163, 74, 0.4)",
+              borderWidth: 1,
+              borderDash: [4, 3],
+              label: {
+                display: false,
+                content: `${cf.amount_cad < 0 ? "-" : "+"}$${Math.abs(cf.amount_cad).toFixed(0)} · ${cf.account}`,
+                backgroundColor: "rgba(0,0,0,0.8)",
+                color: "white",
+                font: { size: 10 },
+              },
+              enter(ctx) { ctx.element.options.label.display = true; ctx.chart.update(); },
+              leave(ctx) { ctx.element.options.label.display = false; ctx.chart.update(); },
+            };
+          }
+          investmentChart.options.plugins.annotation.annotations = ann;
+        }
+
+        async function refreshActiveBenchmarks() {
+          const symbols = Object.keys(activeBenchmarks);
+          for (const sym of symbols) {
+            // Remove existing dataset.
+            const entry = activeBenchmarks[sym];
+            const idx = investmentChart.data.datasets.indexOf(entry.dataset);
+            if (idx > -1) investmentChart.data.datasets.splice(idx, 1);
+            delete activeBenchmarks[sym];
+
+            // Re-fetch under the new scope.
+            const controller = startBenchmarkFetch(sym);
+            try {
+              const res = await fetch(
+                `/api/benchmark/${encodeURIComponent(sym)}/simulated?scope=${encodeURIComponent(currentScope)}`,
+                { signal: controller.signal },
+              );
+              const benchData = await res.json();
+              // Guard: another scope change or toggle happened — bail.
+              if (benchmarkFetchControllers[sym] !== controller) continue;
+              if (benchData.data && benchData.data.length > 0) {
+                const dataset = {
+                  label: `${benchData.label} (simulated)`,
+                  data: benchData.labels.map((l, i) => ({ x: l, y: parseFloat(benchData.data[i]) })),
+                  borderColor: benchData.color,
+                  backgroundColor: "transparent",
+                  borderWidth: 2, borderDash: [6, 3],
+                  fill: false, pointRadius: 0, tension: 0.1,
+                  yAxisID: "y", stack: `__benchmark_${sym}__`,
+                };
+                activeBenchmarks[sym] = { dataset, cashFlows: benchData.cashFlows || [] };
+                investmentChart.data.datasets.push(dataset);
+              }
+            } catch (err) {
+              if (err.name === "AbortError") continue;
+              console.error(`Failed to re-fetch ${sym}:`, err);
+            } finally {
+              endBenchmarkFetch(sym, controller);
+            }
+          }
+          applyAnnotations();
+          investmentChart.update();
+        }
+
+        // --- Recent Uploads ---
+        const uploadsList = document.getElementById("uploadsList");
+
+        async function fetchUploads() {
+          uploadsList.innerHTML =
+            '<p class="text-gray-500 text-sm">Loading recent uploads...</p>';
+          try {
+            const res = await fetch("/uploads");
+            const uploads = await res.json();
+            if (!uploads.length) {
+              uploadsList.innerHTML =
+                '<p class="text-gray-500 text-sm">No uploads yet.</p>';
+              return;
+            }
+            uploadsList.innerHTML = "";
+            uploads.forEach((upload) => {
+              const div = document.createElement("div");
+              div.className =
+                "flex flex-col md:flex-row md:items-center justify-between border-b border-gray-100 py-2";
+              const badgeColor = upload.csv_type === "activity" ? "bg-orange-100 text-orange-800"
+                               : upload.csv_type === "holdings" ? "bg-blue-100 text-blue-800"
+                               : "bg-gray-100 text-gray-700";
+              const badgeText = upload.csv_type || "unknown";
+              div.innerHTML = `
+                <div class="flex items-center gap-2">
+                  <span class="font-mono text-xs text-gray-700">${esc(upload.upload_timestamp.replace("T", " ").slice(0, 19))}</span>
+                  <span class="px-2 py-0.5 rounded text-xs font-semibold ${badgeColor}">${esc(badgeText)}</span>
+                  <span class="text-gray-600">${esc(upload.row_count)} row(s)</span>
+                  ${upload.row_count_skipped ? `<span class="text-gray-400 text-xs">(${esc(upload.row_count_skipped)} skipped)</span>` : ""}
+                  ${upload.as_of_date ? `<span class="text-gray-400 text-xs">as of ${esc(upload.as_of_date)}</span>` : ""}
+                  ${upload.original_filename ? `<span class="text-gray-400 text-xs truncate max-w-xs">${esc(upload.original_filename)}</span>` : ""}
+                </div>
+                <button class="delete-upload-btn bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1 rounded ml-2 mt-2 md:mt-0 text-xs font-semibold" data-upload="${esc(upload.upload_timestamp)}">Delete</button>
+              `;
+              uploadsList.appendChild(div);
+            });
+            // Attach delete handlers
+            uploadsList
+              .querySelectorAll(".delete-upload-btn")
+              .forEach((btn) => {
+                btn.addEventListener("click", async (e) => {
+                  const uploadTimestamp = btn.getAttribute("data-upload");
+                  if (!confirm("Delete this upload and all its data?")) return;
+                  btn.disabled = true;
+                  btn.textContent = "Deleting...";
+                  try {
+                    const resp = await fetch(
+                      `/uploads/${encodeURIComponent(uploadTimestamp)}`,
+                      { method: "DELETE" },
+                    );
+                    const result = await resp.json();
+                    if (!resp.ok)
+                      throw new Error(result.message || "Delete failed");
+                    await refreshData();
+                    await fetchUploads();
+                  } catch (err) {
+                    alert("Error deleting upload: " + err.message);
+                  } finally {
+                    btn.disabled = false;
+                    btn.textContent = "Delete";
+                  }
+                });
+              });
+          } catch (err) {
+            uploadsList.innerHTML =
+              '<p class="text-red-500 text-sm">Error loading uploads.</p>';
+          }
+        }
+
+        // --- Event Listeners ---
+
+        /**
+         * Handles the file upload form submission.
+         */
+        uploadForm.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const formData = new FormData(uploadForm);
+
+          uploadButton.disabled = true;
+          statusMessage.textContent = "Uploading and processing file(s)...";
+
+          try {
+            const response = await fetch("/upload", { method: "POST", body: formData });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message || "Upload failed");
+
+            const summary = (result.results || [])
+              .map((r) => r.error
+                ? `${r.filename}: ERROR ${r.error}`
+                : `${r.filename}: ${r.csv_type} (+${r.inserted}, skipped ${r.skipped})`)
+              .join(" · ");
+            statusMessage.textContent = summary || result.message;
+            await refreshData();
+          } catch (error) {
+            console.error("Upload error:", error);
+            statusMessage.textContent = `Error: ${error.message}`;
+          } finally {
+            uploadButton.disabled = false;
+            uploadForm.reset();
+          }
+        });
+
+        // --- Freshness Strip ---
+        async function loadFreshness() {
+          try {
+            const res = await fetch("/api/freshness");
+            const f = await res.json();
+            const strip = document.getElementById("freshnessStrip");
+            const text = document.getElementById("freshnessText");
+            const warnings = document.getElementById("freshnessWarnings");
+
+            if (f.holdings.count === 0 && f.activity.count === 0) {
+              strip.classList.add("hidden");
+              warnings.innerHTML = "";
+              return;
+            }
+
+            const parts = [
+              `Holdings: latest ${f.holdings.lastDate || "—"} (${f.holdings.count} snapshots)`,
+              `Activity: latest ${f.activity.lastDate || "—"} (${f.activity.count} entries)`,
+            ];
+            if (f.warnings.some((w) => w.kind === "holdings_newer_than_activity")) {
+              const w = f.warnings.find((w) => w.kind === "holdings_newer_than_activity");
+              parts.push(`⚠️ ${w.gap}-day gap`);
+            }
+            text.textContent = parts.join("  ·  ");
+            strip.classList.remove("hidden");
+
+            warnings.innerHTML = "";
+            for (const w of f.warnings) {
+              const color =
+                w.kind === "holdings_newer_than_activity" || w.kind === "interior_activity_gap"
+                  ? "bg-yellow-50 border-yellow-200 text-yellow-800"
+                  : "bg-blue-50 border-blue-200 text-blue-800";
+              const div = document.createElement("div");
+              div.className = `px-4 py-2 border rounded-lg text-sm ${color}`;
+              div.textContent = w.message;
+              warnings.appendChild(div);
+            }
+
+            const histPanel = document.getElementById("activityHistogram");
+            const bars = document.getElementById("histogramBars");
+            const axis = document.getElementById("histogramAxis");
+            const monthly = f.activity.monthly || [];
+
+            if (monthly.length === 0) {
+              histPanel.classList.add("hidden");
+            } else {
+              histPanel.classList.remove("hidden");
+
+              // Soft-cap the visual scale so 300-row months don't crush 5-row months out of sight.
+              // Use the median-of-nonzero as the "typical" reference and cap visual height at 3x that.
+              const nonzero = monthly.map((m) => m.count).filter((c) => c > 0).sort((a, b) => a - b);
+              const median = nonzero.length ? nonzero[Math.floor(nonzero.length / 2)] : 1;
+              const cap = Math.max(1, median * 3);
+
+              bars.innerHTML = monthly.map((m) => {
+                const isZero = m.count === 0;
+                const pct = isZero ? 100 : Math.min(100, Math.round((m.count / cap) * 100));
+                const bg = isZero ? "bg-yellow-200" : "bg-blue-400";
+                // Even zero months show a faint full-height bar in yellow so they're visible.
+                const opacity = isZero ? "opacity-50" : "";
+                return `<div class="flex-1 ${bg} ${opacity} rounded-sm" style="height:${pct}%" title="${esc(m.month)}: ${esc(m.count)} entries"></div>`;
+              }).join("");
+
+              // Axis: show only the first and last month labels to keep it readable.
+              axis.innerHTML = `<span>${esc(monthly[0].month)}</span><span>${esc(monthly[monthly.length - 1].month)}</span>`;
+            }
+          } catch (err) {
+            console.error("Freshness load failed:", err);
+          }
+        }
+
+        async function loadUnrecognized() {
+          try {
+            const res = await fetch("/api/unrecognized-activity");
+            const { count, rows } = await res.json();
+            const panel = document.getElementById("unrecognizedPanel");
+            const badge = document.getElementById("unrecognizedBadge");
+            const list = document.getElementById("unrecognizedList");
+            if (count === 0) {
+              panel.classList.add("hidden");
+              return;
+            }
+            panel.classList.remove("hidden");
+            badge.textContent = `Unrecognized activity (${count} rows) — click to expand`;
+            list.innerHTML = rows.map((r) =>
+              `<div class="border-b border-gray-100 py-1">${esc(r.date)} · ${esc(r.activity)} · ${esc(r.account_name)} · ${esc(r.amount_cad.toFixed(2))} CAD · ${esc(r.description)}</div>`
+            ).join("");
+          } catch (err) {
+            console.error("Unrecognized load failed:", err);
+          }
+        }
+
+        // After refreshData, also refresh uploads and freshness.
+        // Rebinds the local `refreshData` so every existing call site (initial load,
+        // upload form, delete) picks up the wrapper — not just window.refreshData.
+        const origRefreshData = refreshData;
+        refreshData = async function () {
+          await origRefreshData();
+          await fetchUploads();
+          await loadFreshness();
+          await loadUnrecognized();
+        };
+        // --- Initial Load ---
+        refreshData(); // wrapper also runs fetchUploads() + loadFreshness() + loadUnrecognized()
+        loadBenchmarkList();
+      });
+    </script>
+  </body>
+</html>

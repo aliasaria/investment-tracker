@@ -1,0 +1,7 @@
+node_modules/
+.DS_Store
+.env
+uploads/archive/
+investments.db
+.playwright-mcp/
+docs/superpowers/
