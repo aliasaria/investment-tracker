@@ -22,13 +22,10 @@ router.get("/data", (req, res) => {
     const labels = [...new Set(rows.map((r) => r.as_of_date))].sort();
     const accounts = [...new Set(rows.map((r) => r.account_number))];
 
-    const totalsByDate = {};
-    labels.forEach((label) => {
-      totalsByDate[label] = rows
-        .filter((r) => r.as_of_date === label)
-        .reduce((sum, r) => sum + Number(r.value), 0);
-    });
-
+    // Each per-account series carries forward its last known value on dates
+    // where that account has no snapshot. The total must do the same: summing
+    // only same-date rows would understate the portfolio whenever a single
+    // account is uploaded for a new date.
     const datasets = accounts.map((accountNumber, index) => {
       const label = rows.find((r) => r.account_number === accountNumber)?.account_label || accountNumber;
       const data = labels.map((dateLabel) => {
@@ -42,22 +39,28 @@ router.get("/data", (req, res) => {
             .sort((a, b) => new Date(b.as_of_date) - new Date(a.as_of_date));
           if (previousRecords.length > 0) value = previousRecords[0].value;
         }
-        return value.toFixed(2);
+        return Number(value);
       });
 
       const colors = ["#4A90E2","#50E3C2","#F5A623","#BD10E0","#9013FE","#4A4A4A","#F8E71C","#D0021B"];
       const color = colors[index % colors.length];
 
       return {
-        label, accountNumber, data,
+        label, accountNumber, data: data.map((v) => v.toFixed(2)),
+        _rawData: data,
         backgroundColor: `${color}33`, borderColor: color,
         fill: true, tension: 0.1,
       };
     });
 
+    const totalData = labels.map((_, i) =>
+      datasets.reduce((sum, ds) => sum + ds._rawData[i], 0).toFixed(2)
+    );
+    datasets.forEach((ds) => delete ds._rawData);
+
     datasets.unshift({
       label: "Total",
-      data: labels.map((dateLabel) => totalsByDate[dateLabel].toFixed(2)),
+      data: totalData,
       borderColor: "#111", backgroundColor: "#111", borderWidth: 3,
       fill: false, pointRadius: 2, tension: 0.1, order: 0,
       yAxisID: "y", stack: "__total__",
