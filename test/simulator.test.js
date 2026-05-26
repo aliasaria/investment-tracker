@@ -9,20 +9,20 @@ function setupDb({ holdings, cashFlows }) {
   db.exec(`
     CREATE TABLE holdings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      as_of_date TEXT, upload_timestamp TEXT, account_name TEXT,
+      as_of_date TEXT, upload_timestamp TEXT, account_number TEXT,
       symbol TEXT, name TEXT, product_type TEXT, total_value REAL
     );
     CREATE TABLE cash_flows (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      date TEXT, account_name TEXT, amount_cad REAL, amount_original REAL,
+      date TEXT, account_number TEXT, amount_cad REAL, amount_original REAL,
       currency_original TEXT, fx_rate REAL, activity TEXT, description TEXT,
       classification TEXT, source_upload_timestamp TEXT,
-      UNIQUE(date, account_name, amount_original, description)
+      UNIQUE(date, account_number, amount_original, description)
     );
   `);
-  const ih = db.prepare("INSERT INTO holdings (as_of_date, upload_timestamp, account_name, total_value) VALUES (?, '', ?, ?)");
+  const ih = db.prepare("INSERT INTO holdings (as_of_date, upload_timestamp, account_number, total_value) VALUES (?, '', ?, ?)");
   for (const h of holdings) ih.run(h.date, h.account, h.value);
-  const ic = db.prepare(`INSERT INTO cash_flows (date, account_name, amount_cad, amount_original, currency_original, activity, description, classification, source_upload_timestamp)
+  const ic = db.prepare(`INSERT INTO cash_flows (date, account_number, amount_cad, amount_original, currency_original, activity, description, classification, source_upload_timestamp)
                          VALUES (?, ?, ?, ?, 'CAD', '', '', ?, '')`);
   for (const c of cashFlows) ic.run(c.date, c.account, c.amount, c.amount, c.classification);
   return db;

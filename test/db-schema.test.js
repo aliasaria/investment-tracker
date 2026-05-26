@@ -27,7 +27,7 @@ test("db.js creates uploaded_files and cash_flows tables with expected columns",
 
     const cashCols = db.prepare("PRAGMA table_info(cash_flows)").all().map((c) => c.name);
     assert.deepEqual(cashCols.sort(), [
-      "account_name",
+      "account_number",
       "activity",
       "amount_cad",
       "amount_original",
@@ -40,7 +40,7 @@ test("db.js creates uploaded_files and cash_flows tables with expected columns",
       "source_upload_timestamp",
     ]);
 
-    // Verify the UNIQUE index on (date, account_name, amount_original, description).
+    // Verify the UNIQUE index on (date, account_number, amount_original, description).
     const indexes = db.prepare("PRAGMA index_list(cash_flows)").all();
     assert.ok(indexes.some((i) => i.unique === 1), "must have a UNIQUE index");
     db.close();
@@ -50,7 +50,7 @@ test("db.js creates uploaded_files and cash_flows tables with expected columns",
   }
 });
 
-test("holdings_uniq unique index exists on (as_of_date, account_name, symbol/name)", () => {
+test("holdings_uniq unique index exists on (as_of_date, account_number, symbol/name)", () => {
   const cwd = process.cwd();
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "db-test-uniq-"));
   process.chdir(tmp);
@@ -62,6 +62,22 @@ test("holdings_uniq unique index exists on (as_of_date, account_name, symbol/nam
       indexes.some((i) => i.name === "holdings_uniq" && i.unique === 1),
       "expected holdings_uniq UNIQUE index"
     );
+    db.close();
+  } finally {
+    process.chdir(cwd);
+    delete require.cache[require.resolve("../db")];
+  }
+});
+
+test("account_aliases table has expected columns", () => {
+  const cwd = process.cwd();
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "db-test-alias-"));
+  process.chdir(tmp);
+  try {
+    delete require.cache[require.resolve("../db")];
+    const { db } = require("../db");
+    const cols = db.prepare("PRAGMA table_info(account_aliases)").all().map((c) => c.name);
+    assert.deepEqual(cols.sort(), ["account_number", "created_at", "nickname"]);
     db.close();
   } finally {
     process.chdir(cwd);

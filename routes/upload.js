@@ -1,5 +1,5 @@
 // routes/upload.js
-// POST /upload — accepts one or more CSV files, auto-routes by header type,
+// POST /upload — accepts one or more CSV or PDF files, auto-routes by content,
 // archives each file regardless of parse outcome, returns per-file results.
 
 const express = require("express");
@@ -8,10 +8,11 @@ const fs = require("node:fs");
 const csv = require("csv-parser");
 
 const { db } = require("../db");
-const { detectCsvType } = require("../lib/csv-detect");
+const { detectFileType } = require("../lib/file-detect");
 const { archiveUpload } = require("../lib/archive");
 const { ingestHoldings } = require("../lib/holdings-ingest");
 const { ingestActivity } = require("../lib/activity-ingest");
+const { ingestPdfBuffer } = require("../lib/pdf-ingest");
 
 const router = express.Router();
 const upload = multer({ dest: "uploads/" });
@@ -42,18 +43,26 @@ async function processOneFile(file, yahooFinance) {
     uploadTimestamp,
   });
 
-  // Read rows from the *archived* copy so we never touch the (now-moved) tmp path.
-  const rows = await readCsvRows(archivePath);
-  const headers = rows[0] ? Object.keys(rows[0]) : [];
-  const type = detectCsvType(headers);
+  // Sniff a small head to decide pipeline; PDFs identified by %PDF magic bytes.
+  const head = fs.readFileSync(archivePath).slice(0, 4096);
+  const type = detectFileType(head, file.originalname);
 
   let result;
-  if (type === "holdings") {
+  if (type === "pdf") {
+    const buffer = fs.readFileSync(archivePath);
+    const summary = await ingestPdfBuffer({ buffer, uploadTimestamp, db });
+    result = {
+      inserted: summary.holdingsInserted + summary.activityInserted,
+      skipped: 0,
+    };
+  } else if (type === "holdings") {
+    const rows = await readCsvRows(archivePath);
     result = ingestHoldings({ rows, uploadTimestamp, db });
   } else if (type === "activity") {
+    const rows = await readCsvRows(archivePath);
     result = await ingestActivity({ rows, uploadTimestamp, db, yahooFinance });
   } else {
-    result = { inserted: 0, skipped: rows.length };
+    result = { inserted: 0, skipped: 0 };
   }
 
   recordUpload.run(
@@ -71,7 +80,6 @@ async function processOneFile(file, yahooFinance) {
 }
 
 function buildRouter({ yahooFinance }) {
-  // Accept either single-file (legacy field name) or multi-file uploads.
   router.post("/upload", upload.any(), async (req, res) => {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ message: "No file uploaded." });

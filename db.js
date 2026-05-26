@@ -9,7 +9,7 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     as_of_date TEXT NOT NULL,
     upload_timestamp TEXT NOT NULL,
-    account_name TEXT NOT NULL,
+    account_number TEXT NOT NULL,
     symbol TEXT,
     name TEXT,
     product_type TEXT,
@@ -32,7 +32,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS cash_flows (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     date TEXT NOT NULL,
-    account_name TEXT NOT NULL,
+    account_number TEXT NOT NULL,
     amount_cad REAL NOT NULL,
     amount_original REAL NOT NULL,
     currency_original TEXT NOT NULL,
@@ -41,13 +41,21 @@ db.exec(`
     description TEXT NOT NULL,
     classification TEXT NOT NULL,
     source_upload_timestamp TEXT NOT NULL,
-    UNIQUE(date, account_name, amount_original, description)
+    UNIQUE(date, account_number, amount_original, description)
   );
 `);
 
 db.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS holdings_uniq
-  ON holdings (as_of_date, account_name, COALESCE(symbol, ''), COALESCE(name, ''));
+  ON holdings (as_of_date, account_number, COALESCE(symbol, ''), COALESCE(name, ''));
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS account_aliases (
+    account_number TEXT PRIMARY KEY,
+    nickname TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `);
 
 module.exports = { db };

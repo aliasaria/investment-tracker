@@ -93,13 +93,13 @@
             <label
               for="csvFile"
               class="block text-sm font-medium text-gray-700 mb-2"
-              >Upload Holdings or Activity CSV(s)</label
+              >Upload Holdings or Activity CSV(s), or PDF Statement</label
             >
             <input
               type="file"
               id="csvFile"
               name="investment_csv"
-              accept=".csv"
+              accept=".csv,.pdf"
               multiple
               class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition-colors"
               required
@@ -402,8 +402,10 @@
               scopeBtn.className = "ml-auto text-xs px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700";
               scopeBtn.textContent = "drill in";
               scopeBtn.addEventListener("click", async () => {
-                currentScope = dataset.label;
-                scopeIndicatorText.textContent = `Index comparison scope: ${currentScope}`;
+                // dataset.label is the friendly nickname; dataset.accountNumber is the canonical
+                // scope value the simulator expects (account_number column).
+                currentScope = dataset.accountNumber;
+                scopeIndicatorText.textContent = `Index comparison scope: ${dataset.label}`;
                 scopeIndicator.classList.remove("hidden");
                 await refreshActiveBenchmarks();
               });
@@ -629,6 +631,7 @@
                 "flex flex-col md:flex-row md:items-center justify-between border-b border-gray-100 py-2";
               const badgeColor = upload.csv_type === "activity" ? "bg-orange-100 text-orange-800"
                                : upload.csv_type === "holdings" ? "bg-blue-100 text-blue-800"
+                               : upload.csv_type === "pdf" ? "bg-purple-100 text-purple-800"
                                : "bg-gray-100 text-gray-700";
               const badgeText = upload.csv_type || "unknown";
               div.innerHTML = `
@@ -795,7 +798,7 @@
             panel.classList.remove("hidden");
             badge.textContent = `Unrecognized activity (${count} rows) — click to expand`;
             list.innerHTML = rows.map((r) =>
-              `<div class="border-b border-gray-100 py-1">${esc(r.date)} · ${esc(r.activity)} · ${esc(r.account_name)} · ${esc(r.amount_cad.toFixed(2))} CAD · ${esc(r.description)}</div>`
+              `<div class="border-b border-gray-100 py-1">${esc(r.date)} · ${esc(r.activity)} · ${esc(r.account_label)} · ${esc(r.amount_cad.toFixed(2))} CAD · ${esc(r.description)}</div>`
             ).join("");
           } catch (err) {
             console.error("Unrecognized load failed:", err);

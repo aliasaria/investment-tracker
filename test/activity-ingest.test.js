@@ -10,7 +10,7 @@ function freshDb() {
     CREATE TABLE cash_flows (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       date TEXT NOT NULL,
-      account_name TEXT NOT NULL,
+      account_number TEXT NOT NULL,
       amount_cad REAL NOT NULL,
       amount_original REAL NOT NULL,
       currency_original TEXT NOT NULL,
@@ -19,7 +19,12 @@ function freshDb() {
       description TEXT NOT NULL,
       classification TEXT NOT NULL,
       source_upload_timestamp TEXT NOT NULL,
-      UNIQUE(date, account_name, amount_original, description)
+      UNIQUE(date, account_number, amount_original, description)
+    );
+    CREATE TABLE account_aliases (
+      account_number TEXT PRIMARY KEY,
+      nickname TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
   return db;
@@ -132,7 +137,7 @@ test("falls back to Settlement Date when Date is unparseable", async () => {
   const rows = [{
     Date: "garbage",
     Activity: "Withdrawals & De-Registrations",
-    Account: "X",
+    Account: "99999999 - Single",
     Value: "-1,000.00",
     Currency: "CAD",
     "Settlement Date": "2024-01-15",
@@ -151,7 +156,7 @@ test("skips rows with no parseable date and no Settlement Date", async () => {
   const rows = [{
     Date: "garbage",
     Activity: "Withdrawals & De-Registrations",
-    Account: "X",
+    Account: "99999999 - Single",
     Value: "-1,000.00",
     Currency: "CAD",
     "Settlement Date": "",
@@ -170,7 +175,7 @@ test("skips rows with unknown currency", async () => {
   const rows = [{
     Date: "2024-08-01",
     Activity: "Withdrawals & De-Registrations",
-    Account: "X",
+    Account: "99999999 - Single",
     Value: "-1,000.00",
     Currency: "EUR",
     "Settlement Date": "2024-08-01",
@@ -188,7 +193,7 @@ test("idempotency: re-ingest of same rows inserts nothing new", async () => {
   const rows = [{
     Date: "2024-08-01",
     Activity: "Withdrawals & De-Registrations",
-    Account: "X",
+    Account: "99999999 - Single",
     Value: "-1,000.00",
     Currency: "CAD",
     "Settlement Date": "2024-08-01",
@@ -200,4 +205,19 @@ test("idempotency: re-ingest of same rows inserts nothing new", async () => {
   assert.equal(r1.inserted, 1);
   assert.equal(r2.inserted, 0);
   assert.equal(r2.skipped, 1);
+});
+
+test("upserts alias on activity ingest too", async () => {
+  const db = freshDb();
+  const rows = [
+    {
+      Date: "2026-05-01", Account: "98765 - TFSA - Jane",
+      Value: "100.00", Currency: "CAD", Activity: "Deposits",
+      Description: "test deposit",
+    },
+  ];
+  const r = await ingestActivity({ rows, uploadTimestamp: "2026-05-24T12:00:00.000Z", db, yahooFinance: fakeYahoo });
+  assert.equal(r.inserted, 1);
+  const a = db.prepare("SELECT nickname FROM account_aliases WHERE account_number = '98765'").get();
+  assert.equal(a.nickname, "TFSA - Jane");
 });
