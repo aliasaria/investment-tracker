@@ -277,6 +277,74 @@ test("Replace 'activity field is empty for now' expectation now that Task 14 pop
   assert.ok(r.activity.length >= 9, `expected >=9 activity rows, got ${r.activity.length}`);
 });
 
+test("parses header date with non-dot month formats", () => {
+  for (const [token, expectedMonth] of [
+    ["MAY 30", "05-30"],
+    ["JUNE 30", "06-30"],
+    ["JULY 31", "07-31"],
+    ["SEPT 30", "09-30"],
+    ["MAR. 31", "03-31"],
+    ["DEC. 1", "12-01"],
+  ]) {
+    const text = `CANADIAN DOLLAR
+A + STATEMENT
+${token}
+2025
+Your Account Number: 999-99999-9-9
+Page 1 of 1
+ASSET REVIEW
+ACCOUNT ACTIVITY
+`;
+    const r = parseStatement({ currency: "CAD", text });
+    assert.equal(r.asOfDate, `2025-${expectedMonth}`, `failed for token "${token}"`);
+  }
+});
+
+test("parses activity rows with non-dot month formats (e.g. 'MAY 01')", () => {
+  const text = `CANADIAN DOLLAR
+A + STATEMENT
+MAY 30
+2025
+Your Account Number: 999-99999-9-9
+Page 1 of 1
+ASSET REVIEW
+ACCOUNT ACTIVITY
+Opening Balance (APR. 30, 2025) $1,000.00
+MAY 01 INTEREST ACME BOND 220.00
+SR UNSECURED
+Closing Balance (MAY 30, 2025) $1,220.00
+`;
+  const r = parseStatement({ currency: "CAD", text });
+  assert.equal(r.activity.length, 1);
+  assert.equal(r.activity[0].date, "2025-05-01");
+  assert.equal(r.activity[0].activity, "INTEREST");
+  assert.equal(r.activity[0].credit, 220.0);
+});
+
+test("ADJUST rows are skipped (book-cost adjustment, no cash impact)", () => {
+  const text = `CANADIAN DOLLAR
+A + STATEMENT
+MAY 30
+2025
+Your Account Number: 999-99999-9-9
+Page 1 of 1
+ASSET REVIEW
+ACCOUNT ACTIVITY
+Opening Balance (APR. 30, 2025) $1,000.00
+DEC. 31 ADJUST CANADIAN APARTMENT PPTYS
+REAL ESTATE INVT TRUST UTS
+2024 NOTIONAL DISTRIBUTION
+ADJUSTMENT TO BOOK COST
+$78.07
+MAY 01 INTEREST ACME BOND 220.00
+Closing Balance (MAY 30, 2025) $1,220.00
+`;
+  const r = parseStatement({ currency: "CAD", text });
+  // ADJUST row should be skipped; only INTEREST remains.
+  assert.equal(r.activity.length, 1);
+  assert.equal(r.activity[0].activity, "INTEREST");
+});
+
 test("two bonds with same issuer get distinct names via DUE date append", () => {
   const text = `CANADIAN DOLLAR
 A + STATEMENT
