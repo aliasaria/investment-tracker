@@ -40,7 +40,7 @@ test("db.js creates uploaded_files and cash_flows tables with expected columns",
       "source_upload_timestamp",
     ]);
 
-    // Verify the UNIQUE index on (date, account_name, amount_original, description).
+    // Verify the UNIQUE index on (date, account_number, amount_original, description).
     const indexes = db.prepare("PRAGMA index_list(cash_flows)").all();
     assert.ok(indexes.some((i) => i.unique === 1), "must have a UNIQUE index");
     db.close();

@@ -49,7 +49,7 @@ router.get("/data", (req, res) => {
       const color = colors[index % colors.length];
 
       return {
-        label, data,
+        label, accountNumber, data,
         backgroundColor: `${color}33`, borderColor: color,
         fill: true, tension: 0.1,
       };

@@ -402,8 +402,10 @@
               scopeBtn.className = "ml-auto text-xs px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700";
               scopeBtn.textContent = "drill in";
               scopeBtn.addEventListener("click", async () => {
-                currentScope = dataset.label;
-                scopeIndicatorText.textContent = `Index comparison scope: ${currentScope}`;
+                // dataset.label is the friendly nickname; dataset.accountNumber is the canonical
+                // scope value the simulator expects (account_number column).
+                currentScope = dataset.accountNumber;
+                scopeIndicatorText.textContent = `Index comparison scope: ${dataset.label}`;
                 scopeIndicator.classList.remove("hidden");
                 await refreshActiveBenchmarks();
               });
