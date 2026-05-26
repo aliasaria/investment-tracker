@@ -12,9 +12,9 @@ test("trims surrounding whitespace and preserves spaces inside nickname", () => 
   assert.deepEqual(result, { accountNumber: "12345678", nickname: "RRSP - Joe" });
 });
 
-test("accepts hyphenated account numbers like '370-77301-1-9'", () => {
-  const result = splitAccountField("370-77301-1-9 - Family Trust");
-  assert.deepEqual(result, { accountNumber: "370-77301-1-9", nickname: "Family Trust" });
+test("accepts hyphenated account numbers like '111-22222-3-4'", () => {
+  const result = splitAccountField("111-22222-3-4 - Sample Trust");
+  assert.deepEqual(result, { accountNumber: "111-22222-3-4", nickname: "Sample Trust" });
 });
 
 test("throws on missing dash separator", () => {
