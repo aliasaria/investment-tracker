@@ -25,6 +25,36 @@ npm start
 
 Opens http://localhost:3000 in your browser.
 
+## Usage
+
+The tool is fed by two CSVs you export from RBC Dominion Securities — there is no manual data entry and no integration. You need both, and you need to do it more than once for the trend view to mean anything.
+
+### 1. Export the two files from RBC DS
+
+Log in to the RBC Dominion Securities site and grab two exports:
+
+- **Holdings CSV** — go to **Account Holdings** (the page that lists positions per account). Use the export / download button on that page. This is a snapshot of *what you own* and what it's worth, on the day you export it.
+- **Activity CSV** — go to **Activity** (the page that lists deposits, withdrawals, trades, dividends, transfers). Use the export / download button on that page. Choose as wide a date range as the site offers; the ingester is idempotent so overlapping ranges are fine to re-upload later.
+
+The export buttons live in slightly different spots depending on which version of the DS site you're on, but each page has one — they're the only sources of truth this tool reads from.
+
+### 2. Upload both into the app
+
+Drop both files into the upload area (or upload them one at a time). The file type is auto-detected, so you don't need to label them. Re-uploading the same file is harmless.
+
+### Why both files are needed
+
+The two files answer different questions, and the app needs both to do its main job:
+
+- **Holdings** tells you *what your portfolio is worth right now*. Without it, the app has no portfolio value to plot.
+- **Activity** tells you *every dollar that entered or left the portfolio*, plus dividends, trades, and internal transfers. Without it, the parallel-portfolio index comparison can't be honest: it wouldn't know when you deposited or withdrew, so a chart against the S&P 500 would silently treat your contributions as portfolio gains (or your withdrawals as losses).
+
+Together they let the app draw your real portfolio value over time *and* a same-scale "what if I'd put each of those cash flows into the index instead" line — dollar for dollar on the same chart.
+
+### Re-upload over time to see the trend
+
+A single upload is mostly diagnostic — you'll see your current portfolio value and a list of your cash flows, but there's no trend yet. The tool gets useful when you re-export and re-upload **on a recurring basis** (e.g. once a week or once a month). Each new holdings snapshot becomes another point on the portfolio value chart, and each new activity export fills in any cash flows since the last one. After a few cycles you'll have a real time series of your portfolio against the indexes, with deposits and withdrawals correctly accounted for.
+
 ## Tests
 
 ```sh

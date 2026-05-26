@@ -32,6 +32,20 @@ Guidance for AI coding agents (Claude Code, Cursor, Codex, Aider, etc.) working 
 - `index.html` — single-page frontend.
 - `docs/superpowers/specs/` and `docs/superpowers/plans/` — design references.
 
+## Data model: why two CSVs
+
+The app ingests two distinct CSV exports from RBC Dominion Securities, and the schema mirrors them:
+
+- **Holdings export** (from the Account Holdings page) → `holdings` table. A snapshot per account per `as_of_date`: what was owned, what it was worth in CAD. Re-uploading the same day is idempotent.
+- **Activity export** (from the Activity page) → `cash_flows` table. One row per broker activity entry (deposit, withdrawal, dividend, trade, transfer, fee), each tagged with a `classification`.
+
+Both are needed because they answer different questions:
+
+- Holdings alone gives portfolio value but no honest benchmark — without knowing when money entered/left, comparing against the S&P 500 silently attributes contributions to "gains."
+- Activity alone gives cash-flow history but no portfolio value to plot or compare.
+
+The user is expected to re-export and re-upload periodically (weekly/monthly). Each holdings upload adds a point to the value time series; each activity upload extends the cash-flow history. Most analysis is only meaningful after several upload cycles.
+
 ## Querying the database directly
 
 Agents can — and should — open `investments.db` to answer portfolio questions instead of writing a query layer.
