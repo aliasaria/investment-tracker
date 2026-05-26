@@ -248,12 +248,30 @@
                 type: "time",
                 stacked: true,
                 time: {
-                  unit: "day",
+                  unit: "month",
                   tooltipFormat: "yyyy-MM-dd",
+                  displayFormats: {
+                    month: "MMM",
+                    quarter: "MMM",
+                    year: "yyyy",
+                  },
                 },
                 title: {
                   display: true,
                   text: "Date",
+                },
+                ticks: {
+                  // Render the month on line 1, and the year on a second line
+                  // only on the first tick and on each January — keeps month
+                  // labels short while preserving year context.
+                  callback: function (value, index) {
+                    const d = new Date(value);
+                    const month = d.toLocaleString("en-CA", { month: "short", timeZone: "UTC" });
+                    if (index === 0 || d.getUTCMonth() === 0) {
+                      return [month, String(d.getUTCFullYear())];
+                    }
+                    return month;
+                  },
                 },
               },
               y: {
