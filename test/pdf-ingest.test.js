@@ -80,7 +80,7 @@ Closing Balance (APR. 30, 2025) $501.00
 test("ingests both sub-statements; USD holdings converted via fxRate", () => {
   const db = freshDb();
   const summary = ingestPdfText({ text: FAKE_PDF_TEXT, uploadTimestamp: "2026-05-26T12:00:00.000Z", db });
-  assert.equal(summary.accountNumber, "999-99999-9-9");
+  assert.equal(summary.accountNumber, "99999999");
   assert.equal(summary.asOfDate, "2025-04-30");
   assert.equal(summary.holdingsInserted, 2);
   assert.equal(summary.activityInserted, 3);  // 1 CAD DIV + 1 CAD FEE + 1 USD DIV
@@ -153,6 +153,6 @@ Closing Balance (APR. 30, 2025) $0.00
 test("no aliases table mutation when PDF doesn't supply a nickname", () => {
   const db = freshDb();
   ingestPdfText({ text: FAKE_PDF_TEXT, uploadTimestamp: "2026-05-26T12:00:00.000Z", db });
-  const aliasRow = db.prepare("SELECT * FROM account_aliases WHERE account_number = '999-99999-9-9'").get();
+  const aliasRow = db.prepare("SELECT * FROM account_aliases WHERE account_number = '99999999'").get();
   assert.equal(aliasRow, undefined);
 });

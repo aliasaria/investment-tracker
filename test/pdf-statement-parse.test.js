@@ -35,7 +35,7 @@ ACCOUNT ACTIVITY
 
 test("parses CAD sub-statement header", () => {
   const result = parseStatement({ currency: "CAD", text: FAKE_CAD });
-  assert.equal(result.accountNumber, "999-99999-9-9");
+  assert.equal(result.accountNumber, "99999999");
   assert.equal(result.asOfDate, "2025-04-30");
   assert.equal(result.currency, "CAD");
   assert.equal(result.fxRate, 1.4);
@@ -101,7 +101,7 @@ ACCOUNT ACTIVITY
   const result = parseStatement({ currency: "USD", text: FAKE_USD });
   assert.equal(result.currency, "USD");
   assert.equal(result.fxRate, null);
-  assert.equal(result.accountNumber, "999-99999-9-9");
+  assert.equal(result.accountNumber, "99999999");
   assert.equal(result.holdings.length, 1);
   assert.equal(result.holdings[0].symbol, "USCO");
 });
