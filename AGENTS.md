@@ -201,6 +201,7 @@ FROM cash_flows GROUP BY account_name, month ORDER BY account_name, month;
 
 ## Don't
 
+- **Never store PII in this repo.** No account numbers, names, addresses, SINs, balances, holdings, transaction amounts, or anything traceable to a real person — not in code, comments, tests, fixtures, docs, commit messages, or sample CSVs. If you need test data, fabricate it. `investments.db` and `uploads/archive/` are gitignored for this reason; keep it that way. If you spot PII in a diff, stop and flag it before committing.
 - Don't write to `investments.db` from an agent session without explicit go-ahead. Reads are fine.
 - Don't hand-reshape broker CSVs to make ingestion work — fix the parser/classifier instead.
 - Don't bypass the archive step on the upload path; auditability depends on it.
