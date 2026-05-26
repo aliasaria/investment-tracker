@@ -56,3 +56,25 @@ test("only the FIRST CAD header anchors the CAD chunk (per-page header repeats a
 test("throws when no sub-statement markers found", () => {
   assert.throws(() => splitSubStatements("garbage with no statement markers"), /no sub-statement/i);
 });
+
+test("recognizes PIM TFSA (Cdn $) header as CAD sub-statement", () => {
+  const text = "Statement of Your Account\nPIM TFSA (Cdn $)\nNOV. 28\n2025\n...tfsa content...";
+  const subs = splitSubStatements(text);
+  assert.equal(subs.length, 1);
+  assert.equal(subs[0].currency, "CAD");
+  assert.ok(subs[0].text.includes("tfsa content"));
+});
+
+test("recognizes PIM RRSP (Cdn $) header as CAD sub-statement", () => {
+  const text = "Statement of Your Account\nPIM RRSP (Cdn $)\nNOV. 28\n2025\n...rrsp content...";
+  const subs = splitSubStatements(text);
+  assert.equal(subs.length, 1);
+  assert.equal(subs[0].currency, "CAD");
+});
+
+test("recognizes PIM RRSP (U.S. $) header as USD sub-statement", () => {
+  const text = "Statement of Your Account\nPIM RRSP (U.S. $)\nNOV. 28\n2025\n...usd content...";
+  const subs = splitSubStatements(text);
+  assert.equal(subs.length, 1);
+  assert.equal(subs[0].currency, "USD");
+});
