@@ -91,3 +91,20 @@ test("throws listing offending rows when any account_name is malformed", () => {
   );
   assert.throws(() => migrateAccountId(db), /malformed.*no-dash-here/i);
 });
+
+test("error lists all bad rows across both tables", () => {
+  const db = legacyDb();
+  db.prepare("INSERT INTO holdings (as_of_date, upload_timestamp, account_name, symbol, name, product_type, total_value) VALUES (?, ?, ?, ?, ?, ?, ?)").run(
+    "2026-01-01", "2026-01-01T00:00:00Z", "bad-holdings-row", "AAPL", "Apple", "Common Shares", 1000
+  );
+  db.prepare(`INSERT INTO cash_flows
+    (date, account_name, amount_cad, amount_original, currency_original, fx_rate, activity, description, classification, source_upload_timestamp)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    "2026-01-15", "bad-cashflow-row", 50, 50, "CAD", null, "Dividends", "x", "income", "2026-01-15T00:00:00Z"
+  );
+  let err;
+  try { migrateAccountId(db); } catch (e) { err = e; }
+  assert.ok(err, "expected throw");
+  assert.match(err.message, /bad-holdings-row/);
+  assert.match(err.message, /bad-cashflow-row/);
+});
