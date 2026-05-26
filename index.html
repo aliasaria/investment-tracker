@@ -93,13 +93,13 @@
             <label
               for="csvFile"
               class="block text-sm font-medium text-gray-700 mb-2"
-              >Upload Holdings or Activity CSV(s)</label
+              >Upload Holdings or Activity CSV(s), or PDF Statement</label
             >
             <input
               type="file"
               id="csvFile"
               name="investment_csv"
-              accept=".csv"
+              accept=".csv,.pdf"
               multiple
               class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition-colors"
               required
@@ -631,6 +631,7 @@
                 "flex flex-col md:flex-row md:items-center justify-between border-b border-gray-100 py-2";
               const badgeColor = upload.csv_type === "activity" ? "bg-orange-100 text-orange-800"
                                : upload.csv_type === "holdings" ? "bg-blue-100 text-blue-800"
+                               : upload.csv_type === "pdf" ? "bg-purple-100 text-purple-800"
                                : "bg-gray-100 text-gray-700";
               const badgeText = upload.csv_type || "unknown";
               div.innerHTML = `
