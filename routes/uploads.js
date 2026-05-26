@@ -59,10 +59,14 @@ router.delete("/uploads/:uploadTimestamp", (req, res) => {
 router.get("/api/unrecognized-activity", (req, res) => {
   try {
     const rows = db.prepare(`
-      SELECT date, account_name, amount_cad, activity, description
-      FROM cash_flows
-      WHERE classification = 'other'
-      ORDER BY date DESC
+      SELECT cf.date,
+             cf.account_number,
+             COALESCE(a.nickname, cf.account_number) AS account_label,
+             cf.amount_cad, cf.activity, cf.description
+      FROM cash_flows cf
+      LEFT JOIN account_aliases a ON a.account_number = cf.account_number
+      WHERE cf.classification = 'other'
+      ORDER BY cf.date DESC
       LIMIT 200
     `).all();
     res.json({ count: rows.length, rows });

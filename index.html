@@ -795,7 +795,7 @@
             panel.classList.remove("hidden");
             badge.textContent = `Unrecognized activity (${count} rows) — click to expand`;
             list.innerHTML = rows.map((r) =>
-              `<div class="border-b border-gray-100 py-1">${esc(r.date)} · ${esc(r.activity)} · ${esc(r.account_name)} · ${esc(r.amount_cad.toFixed(2))} CAD · ${esc(r.description)}</div>`
+              `<div class="border-b border-gray-100 py-1">${esc(r.date)} · ${esc(r.activity)} · ${esc(r.account_label)} · ${esc(r.amount_cad.toFixed(2))} CAD · ${esc(r.description)}</div>`
             ).join("");
           } catch (err) {
             console.error("Unrecognized load failed:", err);
