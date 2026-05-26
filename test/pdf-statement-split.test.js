@@ -72,6 +72,14 @@ test("recognizes PIM RRSP (Cdn $) header as CAD sub-statement", () => {
   assert.equal(subs[0].currency, "CAD");
 });
 
+test("recognizes basic 'ACCOUNT STATEMENT' header as CAD sub-statement", () => {
+  const text = "CANADIAN DOLLAR\nACCOUNT STATEMENT\nJUNE 30\n2025\n...basic content...";
+  const subs = splitSubStatements(text);
+  assert.equal(subs.length, 1);
+  assert.equal(subs[0].currency, "CAD");
+  assert.ok(subs[0].text.includes("basic content"));
+});
+
 test("recognizes PIM RRSP (U.S. $) header as USD sub-statement", () => {
   const text = "Statement of Your Account\nPIM RRSP (U.S. $)\nNOV. 28\n2025\n...usd content...";
   const subs = splitSubStatements(text);

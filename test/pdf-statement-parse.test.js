@@ -321,6 +321,57 @@ Closing Balance (MAY 30, 2025) $1,220.00
   assert.equal(r.activity[0].credit, 220.0);
 });
 
+test("parseStatement adds CASH-section balances as holdings (productType=CASH)", () => {
+  const text = `CANADIAN DOLLAR
+A + STATEMENT
+JUNE 30
+2025
+Your Account Number: 999-99999-9-9
+Page 1 of 1
+CASH BALANCE
+ACCOUNT
+TYPE
+OPENING BALANCE
+AT MAY 30
+CLOSING BALANCE
+AT JUNE 30
+Cash $100.00 $200.00
+Other $0.00 $50.00
+Margin - Long $25.00 $25.00
+ASSET REVIEW
+ACCOUNT ACTIVITY
+`;
+  const r = parseStatement({ currency: "CAD", text });
+  const cashHoldings = r.holdings.filter((h) => h.productType === "CASH");
+  assert.equal(cashHoldings.length, 3);
+  const byName = Object.fromEntries(cashHoldings.map((h) => [h.name, h.totalValue]));
+  assert.equal(byName["Cash"], 200);
+  assert.equal(byName["Other"], 50);
+  assert.equal(byName["Margin - Long"], 25);
+});
+
+test("cash-only account (no ASSET REVIEW) still produces a holdings row from CASH BALANCE", () => {
+  const text = `CANADIAN DOLLAR
+ACCOUNT STATEMENT
+JUNE 30
+2025
+Your Account Number: 999-99999-9-9
+Page 1 of 1
+CASH BALANCE
+ACCOUNT
+TYPE
+OPENING BALANCE
+AT MAY 30
+CLOSING BALANCE
+AT JUNE 30
+Margin - Long $160.56 $160.56
+`;
+  const r = parseStatement({ currency: "CAD", text });
+  assert.equal(r.holdings.length, 1);
+  assert.equal(r.holdings[0].productType, "CASH");
+  assert.equal(r.holdings[0].totalValue, 160.56);
+});
+
 test("ADJUST rows are skipped (book-cost adjustment, no cash impact)", () => {
   const text = `CANADIAN DOLLAR
 A + STATEMENT
