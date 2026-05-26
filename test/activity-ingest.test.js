@@ -137,7 +137,7 @@ test("falls back to Settlement Date when Date is unparseable", async () => {
   const rows = [{
     Date: "garbage",
     Activity: "Withdrawals & De-Registrations",
-    Account: "X - Single",
+    Account: "99999999 - Single",
     Value: "-1,000.00",
     Currency: "CAD",
     "Settlement Date": "2024-01-15",
@@ -156,7 +156,7 @@ test("skips rows with no parseable date and no Settlement Date", async () => {
   const rows = [{
     Date: "garbage",
     Activity: "Withdrawals & De-Registrations",
-    Account: "X - Single",
+    Account: "99999999 - Single",
     Value: "-1,000.00",
     Currency: "CAD",
     "Settlement Date": "",
@@ -175,7 +175,7 @@ test("skips rows with unknown currency", async () => {
   const rows = [{
     Date: "2024-08-01",
     Activity: "Withdrawals & De-Registrations",
-    Account: "X - Single",
+    Account: "99999999 - Single",
     Value: "-1,000.00",
     Currency: "EUR",
     "Settlement Date": "2024-08-01",
@@ -193,7 +193,7 @@ test("idempotency: re-ingest of same rows inserts nothing new", async () => {
   const rows = [{
     Date: "2024-08-01",
     Activity: "Withdrawals & De-Registrations",
-    Account: "X - Single",
+    Account: "99999999 - Single",
     Value: "-1,000.00",
     Currency: "CAD",
     "Settlement Date": "2024-08-01",
