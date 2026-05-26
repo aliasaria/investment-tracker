@@ -41,10 +41,11 @@ test("parses CAD sub-statement header", () => {
   assert.equal(result.fxRate, 1.4);
 });
 
-test("parses bond row (no symbol, has footnote)", () => {
+test("parses bond row (no symbol, has footnote) — name includes DUE info to disambiguate same-issuer maturities", () => {
   const result = parseStatement({ currency: "CAD", text: FAKE_CAD });
-  const bond = result.holdings.find((h) => h.name === "ACMECO BOND");
+  const bond = result.holdings.find((h) => h.name.startsWith("ACMECO BOND"));
   assert.ok(bond, "expected bond holding");
+  assert.equal(bond.name, "ACMECO BOND DUE 01/01/2030 4.000%");
   assert.equal(bond.productType, "FIXED INCOME");
   assert.equal(bond.symbol, null);
   assert.equal(bond.totalValue, 995.0);
@@ -126,7 +127,7 @@ ACCOUNT ACTIVITY
   const result = parseStatement({ currency: "CAD", text });
   // Only ACMECO BOND should remain — the UNPRICED row is filtered.
   assert.equal(result.holdings.length, 1);
-  assert.equal(result.holdings[0].name, "ACMECO BOND");
+  assert.equal(result.holdings[0].name, "ACMECO BOND DUE 01/01/2030 4.000%");
 });
 
 test("throws on missing account number", () => {
@@ -274,4 +275,29 @@ test("Replace 'activity field is empty for now' expectation now that Task 14 pop
   const r = parseStatement({ currency: "CAD", text: FAKE_ACTIVITY });
   // There should be multiple activity rows now (DIVIDEND, WIRE TFR, FEE, INTEREST, SOLD, BOUGHT, HST, CHEQUE, WITHDRAW = 9; DISTRIB. skipped)
   assert.ok(r.activity.length >= 9, `expected >=9 activity rows, got ${r.activity.length}`);
+});
+
+test("two bonds with same issuer get distinct names via DUE date append", () => {
+  const text = `CANADIAN DOLLAR
+A + STATEMENT
+APR. 30
+2025
+Your Account Number: 999-99999-9-9
+Page 1 of 1
+
+ASSET REVIEW ( Exchange rate 1USD = 1.40000 CAD as of APR. 30, 2025 )
+FIXED INCOME
+TWINS CORP 5,000 100.000 5,000.00 $5,000.00 ¹
+DUE 03/15/2027 4.000% MS 15
+TWINS CORP 7,000 99.000 6,930.00 $6,930.00 ¹
+DUE 09/01/2030 3.500% MS 01
+ACCOUNT ACTIVITY
+`;
+  const r = parseStatement({ currency: "CAD", text });
+  assert.equal(r.holdings.length, 2);
+  const names = r.holdings.map((h) => h.name).sort();
+  assert.deepEqual(names, [
+    "TWINS CORP DUE 03/15/2027 4.000%",
+    "TWINS CORP DUE 09/01/2030 3.500%",
+  ]);
 });
