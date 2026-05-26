@@ -134,7 +134,144 @@ test("throws on missing account number", () => {
   assert.throws(() => parseStatement({ currency: "CAD", text }), /account number/i);
 });
 
-test("activity field is empty for now (Task 14 will populate it)", () => {
-  const result = parseStatement({ currency: "CAD", text: FAKE_CAD });
-  assert.deepEqual(result.activity, []);
+const FAKE_ACTIVITY = `CANADIAN DOLLAR
+A + STATEMENT
+APR. 30
+2025
+Your Account Number: 999-99999-9-9
+Page 1 of 5
+
+ASSET REVIEW ( Exchange rate 1USD = 1.40000 CAD as of APR. 30, 2025 )
+COMMON SHARES
+ACME LTD ACME 100 50.000 4,500.00 $5,000.00
+COM 100
+ACCOUNT ACTIVITY PRICE
+QUANTITY \\RATE DEBIT CREDIT\tDATE ACTIVITY DESCRIPTION
+Opening Balance (MAR. 31, 2025) $1,000.00
+APR. 01 DIVIDEND ACME LTD 0.500 50.00
+CASH DIV ON 100 SHS
+REC 03/15/25 PAY 04/01/25
+APR. 02 WIRE TFR WIRE TRANSFER 4,000.00
+PAYEE
+FAKE PERSON
+APR. 03 FEE AS OF 04/02/25 25.00
+WIRE TRANSFER FEE
+APR. 04 INTEREST ACME BOND 220.00
+SR UNSECURED
+APR. 10 DISTRIB. SOMECO INC 12,000
+SENIOR NOTES TEMP
+APR. 17 SOLD ACME LTD 10- 45.000 450.00
+AVG PRICE SHOWN-DETAILS ON REQ
+APR. 17 BOUGHT OTHERCO 5 100.000 500.00
+AVG PRICE SHOWN-DETAILS ON REQ
+APR. 17 HST HST ON MGMT FEE 100.00
+APR. 17 CHEQUE CK # ABC123 999.99
+APR. 23 WITHDRAW 1000.00(C$ TO U$ @1.4) 1,400.00
+Closing Balance (APR. 30, 2025) $1,000.00
+`;
+
+test("parses DIVIDEND row (credit) with rate", () => {
+  const r = parseStatement({ currency: "CAD", text: FAKE_ACTIVITY });
+  const div = r.activity.find((a) => a.activity === "DIVIDEND");
+  assert.ok(div);
+  assert.equal(div.date, "2025-04-01");
+  assert.equal(div.credit, 50.0);
+  assert.equal(div.debit, 0);
+  assert.ok(div.description.includes("ACME LTD"));
+});
+
+test("parses INTEREST row (credit, no rate)", () => {
+  const r = parseStatement({ currency: "CAD", text: FAKE_ACTIVITY });
+  const intr = r.activity.find((a) => a.activity === "INTEREST");
+  assert.ok(intr);
+  assert.equal(intr.credit, 220.0);
+});
+
+test("parses WIRE TFR (two-token activity, debit)", () => {
+  const r = parseStatement({ currency: "CAD", text: FAKE_ACTIVITY });
+  const w = r.activity.find((a) => a.activity === "WIRE TFR");
+  assert.ok(w, "expected WIRE TFR row");
+  assert.equal(w.debit, 4000.0);
+  assert.equal(w.credit, 0);
+});
+
+test("parses FEE (debit)", () => {
+  const r = parseStatement({ currency: "CAD", text: FAKE_ACTIVITY });
+  const fee = r.activity.find((a) => a.activity === "FEE");
+  assert.ok(fee);
+  assert.equal(fee.debit, 25.0);
+});
+
+test("parses SOLD and BOUGHT", () => {
+  const r = parseStatement({ currency: "CAD", text: FAKE_ACTIVITY });
+  const sold = r.activity.find((a) => a.activity === "SOLD");
+  const bought = r.activity.find((a) => a.activity === "BOUGHT");
+  assert.equal(sold.credit, 450.0);
+  assert.equal(bought.debit, 500.0);
+});
+
+test("parses HST (debit) and CHEQUE (debit)", () => {
+  const r = parseStatement({ currency: "CAD", text: FAKE_ACTIVITY });
+  const hst = r.activity.find((a) => a.activity === "HST");
+  const chq = r.activity.find((a) => a.activity === "CHEQUE");
+  assert.equal(hst.debit, 100.0);
+  assert.equal(chq.debit, 999.99);
+});
+
+test("parses WITHDRAW with embedded FX in description", () => {
+  const r = parseStatement({ currency: "CAD", text: FAKE_ACTIVITY });
+  const w = r.activity.find((a) => a.activity === "WITHDRAW");
+  assert.ok(w);
+  assert.equal(w.debit, 1400.0);
+  assert.ok(w.description.includes("@1.4"));
+});
+
+test("DISTRIB. rows are skipped (no $ amount)", () => {
+  const r = parseStatement({ currency: "CAD", text: FAKE_ACTIVITY });
+  assert.ok(!r.activity.some((a) => a.activity === "DISTRIB."));
+});
+
+test("Opening/Closing balance lines do not become activity rows", () => {
+  const r = parseStatement({ currency: "CAD", text: FAKE_ACTIVITY });
+  assert.ok(!r.activity.some((a) => /Opening Balance|Closing Balance/.test(a.description)));
+});
+
+test("continuation lines extend the previous row's description, not new rows", () => {
+  const r = parseStatement({ currency: "CAD", text: FAKE_ACTIVITY });
+  const div = r.activity.find((a) => a.activity === "DIVIDEND");
+  // 'CASH DIV ON 100 SHS' and 'REC 03/15/25 PAY 04/01/25' should be in description
+  assert.ok(div.description.includes("CASH DIV ON 100 SHS"));
+  assert.ok(div.description.includes("REC 03/15/25"));
+});
+
+test("USD dividend with NRT records the NET credit (rightmost numeric)", () => {
+  const text = `U.S. DOLLAR
+A + STATEMENT
+APR. 30
+2025
+Your Account Number: 999-99999-9-9
+Page 1 of 1
+
+ASSET REVIEW
+COMMON SHARES
+USCO INC USCO 10 100.000 900.00 $1,000.00
+10
+ACCOUNT ACTIVITY
+Opening Balance (MAR. 31, 2025) $500.00
+APR. 02 DIVIDEND USCO INC 0.01 0.38 NRT 2.58
+CASH DIV ON 258 SHS
+NON-RES TAX WITHHELD
+Closing Balance (APR. 30, 2025) $502.58
+`;
+  const r = parseStatement({ currency: "USD", text });
+  const div = r.activity.find((a) => a.activity === "DIVIDEND");
+  assert.ok(div);
+  assert.equal(div.credit, 2.58);
+  assert.equal(div.debit, 0);
+});
+
+test("Replace 'activity field is empty for now' expectation now that Task 14 populates it", () => {
+  const r = parseStatement({ currency: "CAD", text: FAKE_ACTIVITY });
+  // There should be multiple activity rows now (DIVIDEND, WIRE TFR, FEE, INTEREST, SOLD, BOUGHT, HST, CHEQUE, WITHDRAW = 9; DISTRIB. skipped)
+  assert.ok(r.activity.length >= 9, `expected >=9 activity rows, got ${r.activity.length}`);
 });
