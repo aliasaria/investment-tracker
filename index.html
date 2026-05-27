@@ -516,9 +516,73 @@
           cashflowState.chart = new Chart(canvas.getContext("2d"), config);
         };
 
-        // Stub overridden in Task 7.
+        const formatCAD = (n) => {
+          const sign = n < 0 ? "-" : "";
+          return `${sign}$${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        };
+
+        const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => (
+          { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+        ));
+
         const showCashflowHover = (key, agg) => {
           cashflowState.hoverPeriod = key;
+          const title = document.getElementById("cashflowHoverTitle");
+          const body = document.getElementById("cashflowHoverBody");
+          const clearBtn = document.getElementById("cashflowHoverClear");
+
+          title.textContent = periodLabelFor(key, cashflowState.granularity);
+          clearBtn.classList.remove("hidden");
+
+          // Summary rows: one per enabled bucket that has data in this period.
+          const summaryRows = CASHFLOW_BUCKETS
+            .filter((b) => cashflowState.enabledBuckets.has(b.name))
+            .map((b) => {
+              const subtotal = agg.buckets.get(b.name).get(key) || 0;
+              const count = (agg.rows.get(key) || []).filter((r) => r.bucket === b.name).length;
+              return { bucket: b, subtotal, count };
+            })
+            .filter((r) => r.count > 0);
+
+          const net = summaryRows.reduce((s, r) => s + r.subtotal, 0);
+          const allRows = (agg.rows.get(key) || []).slice().sort((a, b) =>
+            Math.abs(b.amount_cad) - Math.abs(a.amount_cad)
+          );
+
+          const summaryHtml = summaryRows.map((r) => `
+            <div class="flex items-center justify-between py-0.5">
+              <span class="flex items-center gap-2">
+                <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${r.bucket.color};"></span>
+                ${escapeHtml(r.bucket.name)}
+                <span class="text-gray-400">(${r.count})</span>
+              </span>
+              <span class="font-mono">${formatCAD(r.subtotal)}</span>
+            </div>
+          `).join("");
+
+          const txnHtml = allRows.map((r) => `
+            <div class="border-b border-gray-100 py-1 leading-tight">
+              <div class="flex justify-between">
+                <span>${escapeHtml(r.date)} · ${escapeHtml(r.account_label)}</span>
+                <span class="font-mono">${formatCAD(r.amount_cad)}</span>
+              </div>
+              <div class="text-gray-500">${escapeHtml(r.activity)} · ${escapeHtml(r.description)}</div>
+            </div>
+          `).join("");
+
+          body.innerHTML = `
+            <div class="mb-2">${summaryHtml || '<div class="text-gray-400">No data in this period.</div>'}</div>
+            <div class="flex items-center justify-between border-t border-gray-200 pt-1 mb-2">
+              <span class="font-semibold">Net</span>
+              <span class="font-mono font-semibold">${formatCAD(net)}</span>
+            </div>
+            <details>
+              <summary class="cursor-pointer text-blue-600 hover:underline">Transactions (${allRows.length})</summary>
+              <div class="mt-2 max-h-64 overflow-y-auto text-xs">
+                ${txnHtml || '<div class="text-gray-400">None.</div>'}
+              </div>
+            </details>
+          `;
         };
 
         // --- Top-right nav menu / view switching ---
@@ -1285,6 +1349,12 @@
         loadBenchmarkList();
         renderCashflowBucketFilters();
         wireCashflowGranularityToggle();
+        document.getElementById("cashflowHoverClear").addEventListener("click", () => {
+          cashflowState.hoverPeriod = null;
+          document.getElementById("cashflowHoverTitle").textContent = "Hover a bar";
+          document.getElementById("cashflowHoverBody").innerHTML = "Hover any bar in the chart to see the breakdown for that period.";
+          document.getElementById("cashflowHoverClear").classList.add("hidden");
+        });
         loadCashflows();
       });
     </script>
