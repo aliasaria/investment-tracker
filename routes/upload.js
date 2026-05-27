@@ -10,6 +10,7 @@ const csv = require("csv-parser");
 const { db } = require("../db");
 const { detectFileType } = require("../lib/file-detect");
 const { archiveUpload } = require("../lib/archive");
+const { backupDatabase } = require("../lib/db-backup");
 const { ingestHoldings } = require("../lib/holdings-ingest");
 const { ingestActivity } = require("../lib/activity-ingest");
 const { ingestPdfBuffer } = require("../lib/pdf-ingest");
@@ -83,6 +84,12 @@ function buildRouter({ yahooFinance }) {
   router.post("/upload", upload.any(), async (req, res) => {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ message: "No file uploaded." });
+    }
+    try {
+      backupDatabase({ uploadTimestamp: new Date().toISOString() });
+    } catch (err) {
+      console.error("DB backup failed; aborting upload:", err);
+      return res.status(500).json({ message: "DB backup failed; upload aborted." });
     }
     const results = [];
     for (const file of req.files) {
