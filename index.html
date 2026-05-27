@@ -361,7 +361,10 @@
               return;
             }
             if (!cashflowState.enabledBuckets.has(bucket)) return;
-            if (typeof row.amount_cad !== "number") return;
+            if (typeof row.amount_cad !== "number") {
+              console.warn("Cash-flow row dropped: non-numeric amount_cad:", row);
+              return;
+            }
 
             const key = periodKeyFor(row.date, cashflowState.granularity);
             periodSet.add(key);
@@ -397,9 +400,15 @@
             return;
           }
           // Seed selectedAccounts with every account if it hasn't been initialized
-          // by the Home page yet (e.g. user opened Activity first).
+          // by the Home page yet (e.g. user opened Activity first). Once seeded,
+          // mark the filter system as initialized and record these account_numbers
+          // in _seenKeys so populateFilters (when it later runs) takes the
+          // already-initialized path and respects any deselections the user makes
+          // before Home data loads.
           if (selectedAccounts.size === 0) {
             accounts.forEach((a) => selectedAccounts.add(a.account_number));
+            _filtersInitialized = true;
+            accounts.forEach((a) => populateFilters._seenKeys.add(a.account_number));
           }
           renderAccountFilters(container, {
             accounts,
