@@ -105,8 +105,3 @@ Activity rows are classified as one of:
 
 To refine: add more rules to `lib/classify.js` and a test in `test/classify.test.js`.
 
-## Design references
-
-- Spec: `docs/superpowers/specs/2026-05-24-portfolio-vs-index-with-cashflows-design.md`
-- Plan: `docs/superpowers/plans/2026-05-24-portfolio-vs-index-with-cashflows.md`
-
