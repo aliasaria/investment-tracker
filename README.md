@@ -1,5 +1,9 @@
 # Investment Tracker
 
+![Portfolio vs index comparison](img/main.png)
+
+![Activity view](img/activity.png)
+
 A small local web app to track a multi-account **RBC Dominion Securities** portfolio against market indexes, honestly accounting for deposits and withdrawals. It only ingests RBC Dominion Securities CSV exports and PDF statements — no other broker is supported.
 
 ## Features
