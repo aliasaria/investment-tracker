@@ -471,27 +471,44 @@
           });
 
           const listener = {
+            _container: container,
             onExternalChange: (set) => {
               checkboxes.forEach((cb, account_number) => {
                 cb.checked = set.has(account_number);
               });
             },
           };
+          // Replace any prior listener registered for this container (avoids
+          // unbounded growth + stale closures over detached checkboxes after re-render).
+          const existingIdx = accountSelectionListeners.findIndex((l) => l._container === container);
+          if (existingIdx !== -1) accountSelectionListeners.splice(existingIdx, 1);
           accountSelectionListeners.push(listener);
         };
+
+        // First-load flag + the set of account_numbers we've ever rendered.
+        // Used so that newly-discovered accounts default to "visible" while
+        // accounts the user has actively deselected stay deselected on reload.
+        let _filtersInitialized = false;
 
         /**
          * Home-page wrapper: drives investmentChart visibility from selectedAccounts
          * and renders the per-row "drill in" button used by the simulator.
          */
         const populateFilters = (datasets) => {
-          // Initialize selection on first call: everything checked.
-          if (selectedAccounts.size === 0) {
-            datasets.forEach((ds) => {
-              if (ds.accountNumber) selectedAccounts.add(ds.accountNumber);
-              else if (ds.label === "Total") selectedAccounts.add("__total__");
-            });
-          }
+          // First load: everything visible. On subsequent calls, only add
+          // newly-seen accounts (preserves any user deselections).
+          datasets.forEach((ds) => {
+            const key = ds.accountNumber || (ds.label === "Total" ? "__total__" : ds.label);
+            if (!_filtersInitialized) {
+              selectedAccounts.add(key);
+            } else {
+              // Track which keys we've ever seen so new accounts default to visible
+              // without re-adding ones the user deselected.
+              if (!populateFilters._seenKeys.has(key)) selectedAccounts.add(key);
+            }
+            populateFilters._seenKeys.add(key);
+          });
+          _filtersInitialized = true;
 
           const accounts = datasets.map((ds) => ({
             account_number: ds.accountNumber || (ds.label === "Total" ? "__total__" : ds.label),
@@ -533,6 +550,7 @@
           });
           applyVisibility();
         };
+        populateFilters._seenKeys = new Set();
 
         // --- Benchmark Index Comparison ---
         const benchmarkTogglesContainer =
