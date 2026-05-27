@@ -67,12 +67,15 @@ const cases = [
     expected: null },
 
   // Defensive: missing fields
-  { name: "missing classification returns null",
+  { name: "missing classification: activity=Fees still buckets as Fees",
     row: { activity: "Fees" },
     expected: "Fees" },
   { name: "missing activity with external_in still buckets",
     row: { classification: "external_in" },
     expected: "Deposits" },
+  { name: "null row argument returns null without throwing",
+    row: null,
+    expected: null },
 ];
 
 for (const c of cases) {
