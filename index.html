@@ -310,6 +310,115 @@
           });
         };
 
+        // Mirror of lib/cashflow-buckets.js. Kept in sync manually — there is
+        // no build step. If you change one, change both and the test cases.
+        const bucketForRow = (row) => {
+          const c = String(row.classification || "");
+          const a = String(row.activity || "");
+          if (c === "external_in") return "Deposits";
+          if (a === "Fees") return "Fees";
+          if (a === "Taxes") return "Taxes";
+          if (c === "external_out" && a === "Withdrawals & De-Registrations") return "Withdrawals";
+          if (c === "income") return "Dividends/Income";
+          if (c === "internal_transfer") return "Internal transfers";
+          if (c === "fx") return "FX";
+          if (c === "trade") return "Trades";
+          if (c === "other") return "Other";
+          return null;
+        };
+
+        const periodKeyFor = (isoDate, granularity) => {
+          // isoDate is YYYY-MM-DD — both granularities use a lexically-sortable prefix.
+          return granularity === "year" ? isoDate.slice(0, 4) : isoDate.slice(0, 7);
+        };
+
+        const periodLabelFor = (key, granularity) => {
+          if (granularity === "year") return key;
+          const [y, m] = key.split("-");
+          const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+          return `${months[parseInt(m, 10) - 1]} ${y}`;
+        };
+
+        /**
+         * Returns:
+         *   {
+         *     periods:  [periodKey, ...] sorted ascending,
+         *     buckets:  Map<bucketName, Map<periodKey, number>>   signed CAD subtotal
+         *     rows:     Map<periodKey, Array<row>>                rows contributing to that period
+         *   }
+         * Filters by current selectedAccounts and enabledBuckets.
+         */
+        const aggregateCashflows = () => {
+          const out = { periods: [], buckets: new Map(), rows: new Map() };
+          CASHFLOW_BUCKETS.forEach((b) => out.buckets.set(b.name, new Map()));
+          const periodSet = new Set();
+
+          cashflowState.rows.forEach((row) => {
+            if (!selectedAccounts.has(row.account_number)) return;
+            const bucket = bucketForRow(row);
+            if (!bucket) {
+              console.warn("Unbucketed cash_flows row dropped:", row);
+              return;
+            }
+            if (!cashflowState.enabledBuckets.has(bucket)) return;
+            if (typeof row.amount_cad !== "number") return;
+
+            const key = periodKeyFor(row.date, cashflowState.granularity);
+            periodSet.add(key);
+
+            const bucketMap = out.buckets.get(bucket);
+            bucketMap.set(key, (bucketMap.get(key) || 0) + row.amount_cad);
+
+            if (!out.rows.has(key)) out.rows.set(key, []);
+            out.rows.get(key).push({ ...row, bucket });
+          });
+
+          out.periods = [...periodSet].sort();
+          return out;
+        };
+
+        const uniqueAccountsFromCashflows = () => {
+          const seen = new Map();
+          cashflowState.rows.forEach((row) => {
+            if (!seen.has(row.account_number)) {
+              seen.set(row.account_number, row.account_label);
+            }
+          });
+          return [...seen.entries()]
+            .map(([account_number, account_label]) => ({ account_number, account_label }))
+            .sort((a, b) => a.account_label.localeCompare(b.account_label));
+        };
+
+        const mountCashflowAccountFilter = () => {
+          const container = document.getElementById("cashflowAccountFilters");
+          const accounts = uniqueAccountsFromCashflows();
+          if (accounts.length === 0) {
+            container.innerHTML = '<p class="text-gray-500 text-sm">No accounts yet.</p>';
+            return;
+          }
+          // Seed selectedAccounts with every account if it hasn't been initialized
+          // by the Home page yet (e.g. user opened Activity first).
+          if (selectedAccounts.size === 0) {
+            accounts.forEach((a) => selectedAccounts.add(a.account_number));
+          }
+          renderAccountFilters(container, {
+            accounts,
+            onChange: () => renderCashflowChart(),
+          });
+        };
+
+        const loadCashflows = async () => {
+          try {
+            const res = await fetch("/api/cash-flows");
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            cashflowState.rows = await res.json();
+            mountCashflowAccountFilter();
+            renderCashflowChart();
+          } catch (e) {
+            console.error("Failed to load cash flows:", e);
+          }
+        };
+
         // Placeholder until Task 6 implements the chart.
         const renderCashflowChart = () => {
           /* implemented in Task 6 */
@@ -962,6 +1071,7 @@
               .join(" · ");
             statusMessage.textContent = summary || result.message;
             await refreshData();
+            await loadCashflows();
           } catch (error) {
             console.error("Upload error:", error);
             statusMessage.textContent = `Error: ${error.message}`;
@@ -1078,6 +1188,7 @@
         loadBenchmarkList();
         renderCashflowBucketFilters();
         wireCashflowGranularityToggle();
+        loadCashflows();
       });
     </script>
   </body>
