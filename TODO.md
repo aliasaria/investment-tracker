@@ -31,3 +31,9 @@ Today the chart shows everything from the earliest holdings snapshot. A range pi
 - Existing things that stay untouched: drilldown, freshness strip, ingest pipeline, annotation markers (Chart.js auto-clips to x-axis range).
 
 Estimated size: ~30 backend lines + ~50 frontend lines + a handful of tests in `test/simulator.test.js` (anchor at chosen window, anchor falls between snapshots, window narrower than data).
+
+## Bugs
+
+* Date on X axis doesn't always show year because if the time horizon is too long, the months are not all shown (it shows feb then april then etc) so the month with the year is skipped. Can we support 2 y axes? or do we just add year to every month?
+
+* The recent uploads section is too long now -- move it to it's own page
