@@ -10,6 +10,7 @@ const dataRouter = require("./routes/data");
 const uploadsRouter = require("./routes/uploads");
 const { buildRouter: buildBenchmarksRouter } = require("./routes/benchmarks");
 const freshnessRouter = require("./routes/freshness");
+const cashflowsRouter = require("./routes/cashflows");
 
 const yahooFinance = new YahooFinance();
 const app = express();
@@ -23,6 +24,7 @@ app.use(dataRouter);
 app.use(uploadsRouter);
 app.use(buildBenchmarksRouter({ yahooFinance }));
 app.use(freshnessRouter);
+app.use(cashflowsRouter);
 // Then static + the root HTML fallback.
 app.use(express.static(path.join(__dirname)));
 app.get("/", (req, res) => res.sendFile(path.join(__dirname, "index.html")));
