@@ -181,6 +181,18 @@
 
         let currentScope = "all"; // "all" or an account name
 
+        // Shared account-filter state.
+        // selectedAccounts holds account_number strings that are currently checked
+        // on *any* page. Filter components register listeners so that toggling on
+        // one page updates the checkbox state on every other instance.
+        const selectedAccounts = new Set();
+        const accountSelectionListeners = [];
+        const notifyAccountSelectionChange = (source) => {
+          accountSelectionListeners.forEach((l) => {
+            if (l !== source) l.onExternalChange(selectedAccounts);
+          });
+        };
+
         // --- Top-right nav menu / view switching ---
         const navMenuButton = document.getElementById("navMenuButton");
         const navMenu = document.getElementById("navMenu");
@@ -375,26 +387,32 @@
         };
 
         /**
-         * Creates the checkboxes to filter accounts.
+         * Renders account-filter checkboxes into `container`.
+         * options:
+         *   accounts: [{ account_number, account_label }]  — list to render
+         *   labelMap: optional Map<account_number, { color, isTotal }> — per-row styling hints
+         *   onChange: (selectedSet) => void                — called after the user toggles a row here
+         *   renderRowExtra: (account) => HTMLElement|null  — optional per-row trailing element
          */
-        const populateFilters = (datasets) => {
-          accountFiltersContainer.innerHTML = ""; // Clear existing filters
-          if (datasets.length === 0) {
-            accountFiltersContainer.innerHTML =
-              '<p class="text-gray-500 text-sm">No accounts to display.</p>';
+        const renderAccountFilters = (container, options) => {
+          const { accounts, labelMap = new Map(), onChange, renderRowExtra } = options;
+          container.innerHTML = "";
+          if (accounts.length === 0) {
+            container.innerHTML = '<p class="text-gray-500 text-sm">No accounts to display.</p>';
             return;
           }
 
-          // Track per-dataset checkboxes so the Select all / none links can update them.
-          const checkboxes = [];
+          const checkboxes = new Map(); // account_number -> input element
+
           const setAll = (checked) => {
-            checkboxes.forEach((cb, i) => {
-              if (cb.checked !== checked) {
-                cb.checked = checked;
-                investmentChart.setDatasetVisibility(i, checked);
-              }
+            accounts.forEach(({ account_number }) => {
+              if (checked) selectedAccounts.add(account_number);
+              else selectedAccounts.delete(account_number);
+              const cb = checkboxes.get(account_number);
+              if (cb) cb.checked = checked;
             });
-            investmentChart.update();
+            onChange(selectedAccounts);
+            notifyAccountSelectionChange(listener);
           };
 
           const toolbar = document.createElement("div");
@@ -412,57 +430,108 @@
           toolbar.appendChild(allBtn);
           toolbar.appendChild(document.createTextNode("·"));
           toolbar.appendChild(noneBtn);
-          accountFiltersContainer.appendChild(toolbar);
+          container.appendChild(toolbar);
 
-          datasets.forEach((dataset, index) => {
-            const isTotal = dataset.label === "Total";
-            const filterId = `filter-${index}`;
+          accounts.forEach((account) => {
+            const { account_number, account_label } = account;
+            const meta = labelMap.get(account_number) || {};
+            const isTotal = meta.isTotal === true;
+            const color = meta.color;
+            const filterId = `filter-${container.id}-${account_number}`;
             const wrapper = document.createElement("div");
+            wrapper.className = "flex items-center gap-2";
 
             const checkbox = document.createElement("input");
             checkbox.type = "checkbox";
             checkbox.id = filterId;
-            checkbox.checked = true;
-            checkbox.className =
-              "h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500";
-            checkbox.style.accentColor = dataset.borderColor;
+            checkbox.checked = selectedAccounts.has(account_number);
+            checkbox.className = "h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500";
+            if (color) checkbox.style.accentColor = color;
+            checkboxes.set(account_number, checkbox);
 
             const label = document.createElement("label");
             label.htmlFor = filterId;
             label.className = `ml-3 block text-sm ${isTotal ? "font-semibold text-gray-900" : "font-medium text-gray-700"}`;
-            label.textContent = dataset.label;
+            label.textContent = account_label;
 
-            checkboxes.push(checkbox);
-
-            // Event listener to toggle dataset visibility
             checkbox.addEventListener("change", () => {
-              investmentChart.setDatasetVisibility(index, checkbox.checked);
-              investmentChart.update();
+              if (checkbox.checked) selectedAccounts.add(account_number);
+              else selectedAccounts.delete(account_number);
+              onChange(selectedAccounts);
+              notifyAccountSelectionChange(listener);
             });
 
-            wrapper.className = "flex items-center gap-2";
             wrapper.appendChild(checkbox);
             wrapper.appendChild(label);
 
-            // Total has no "drill in" — drilldown only makes sense per account.
-            if (!isTotal) {
-              const scopeBtn = document.createElement("button");
-              scopeBtn.type = "button";
-              scopeBtn.className = "ml-auto text-xs px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700";
-              scopeBtn.textContent = "drill in";
-              scopeBtn.addEventListener("click", async () => {
-                // dataset.label is the friendly nickname; dataset.accountNumber is the canonical
-                // scope value the simulator expects (account_number column).
-                currentScope = dataset.accountNumber;
-                scopeIndicatorText.textContent = `Index comparison scope: ${dataset.label}`;
+            const extra = renderRowExtra ? renderRowExtra(account) : null;
+            if (extra) wrapper.appendChild(extra);
+
+            container.appendChild(wrapper);
+          });
+
+          const listener = {
+            onExternalChange: (set) => {
+              checkboxes.forEach((cb, account_number) => {
+                cb.checked = set.has(account_number);
+              });
+            },
+          };
+          accountSelectionListeners.push(listener);
+        };
+
+        /**
+         * Home-page wrapper: drives investmentChart visibility from selectedAccounts
+         * and renders the per-row "drill in" button used by the simulator.
+         */
+        const populateFilters = (datasets) => {
+          // Initialize selection on first call: everything checked.
+          if (selectedAccounts.size === 0) {
+            datasets.forEach((ds) => {
+              if (ds.accountNumber) selectedAccounts.add(ds.accountNumber);
+              else if (ds.label === "Total") selectedAccounts.add("__total__");
+            });
+          }
+
+          const accounts = datasets.map((ds) => ({
+            account_number: ds.accountNumber || (ds.label === "Total" ? "__total__" : ds.label),
+            account_label: ds.label,
+          }));
+          const labelMap = new Map();
+          datasets.forEach((ds, index) => {
+            const key = ds.accountNumber || (ds.label === "Total" ? "__total__" : ds.label);
+            labelMap.set(key, { color: ds.borderColor, isTotal: ds.label === "Total", chartIndex: index });
+          });
+
+          const applyVisibility = () => {
+            datasets.forEach((ds, index) => {
+              const key = ds.accountNumber || (ds.label === "Total" ? "__total__" : ds.label);
+              const visible = selectedAccounts.has(key);
+              investmentChart.setDatasetVisibility(index, visible);
+            });
+            investmentChart.update();
+          };
+
+          renderAccountFilters(accountFiltersContainer, {
+            accounts,
+            labelMap,
+            onChange: applyVisibility,
+            renderRowExtra: (account) => {
+              if (account.account_number === "__total__") return null;
+              const btn = document.createElement("button");
+              btn.type = "button";
+              btn.className = "ml-auto text-xs px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700";
+              btn.textContent = "drill in";
+              btn.addEventListener("click", async () => {
+                currentScope = account.account_number;
+                scopeIndicatorText.textContent = `Index comparison scope: ${account.account_label}`;
                 scopeIndicator.classList.remove("hidden");
                 await refreshActiveBenchmarks();
               });
-              wrapper.appendChild(scopeBtn);
-            }
-
-            accountFiltersContainer.appendChild(wrapper);
+              return btn;
+            },
           });
+          applyVisibility();
         };
 
         // --- Benchmark Index Comparison ---
