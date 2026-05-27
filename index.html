@@ -339,6 +339,29 @@
           return `${months[parseInt(m, 10) - 1]} ${y}`;
         };
 
+        // Returns every period between `start` and `end` inclusive at the given granularity.
+        // For "month", periods are YYYY-MM strings; for "year", YYYY strings.
+        const periodsBetween = (start, end, granularity) => {
+          if (!start || !end) return [];
+          const out = [];
+          if (granularity === "year") {
+            const y0 = parseInt(start.slice(0, 4), 10);
+            const y1 = parseInt(end.slice(0, 4), 10);
+            for (let y = y0; y <= y1; y++) out.push(String(y));
+            return out;
+          }
+          // month: walk from (y0, m0) to (y1, m1).
+          const [y0, m0] = start.slice(0, 7).split("-").map((s) => parseInt(s, 10));
+          const [y1, m1] = end.slice(0, 7).split("-").map((s) => parseInt(s, 10));
+          let y = y0, m = m0;
+          while (y < y1 || (y === y1 && m <= m1)) {
+            out.push(`${y}-${String(m).padStart(2, "0")}`);
+            m++;
+            if (m > 12) { m = 1; y++; }
+          }
+          return out;
+        };
+
         /**
          * Returns:
          *   {
@@ -376,7 +399,14 @@
             out.rows.get(key).push({ ...row, bucket });
           });
 
-          out.periods = [...periodSet].sort();
+          // Fill in periods with zero activity between the earliest and latest
+          // contributing periods so the time axis is continuous (spec requirement).
+          const sorted = [...periodSet].sort();
+          if (sorted.length === 0) {
+            out.periods = [];
+            return out;
+          }
+          out.periods = periodsBetween(sorted[0], sorted[sorted.length - 1], cashflowState.granularity);
           return out;
         };
 
@@ -913,6 +943,7 @@
           });
 
           const applyVisibility = () => {
+            if (!investmentChart) return;
             datasets.forEach((ds, index) => {
               const key = ds.accountNumber || (ds.label === "Total" ? "__total__" : ds.label);
               const visible = selectedAccounts.has(key);
