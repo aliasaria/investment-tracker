@@ -428,9 +428,97 @@
           }
         };
 
-        // Placeholder until Task 6 implements the chart.
         const renderCashflowChart = () => {
-          /* implemented in Task 6 */
+          const canvas = document.getElementById("cashflowChart");
+          if (!canvas) return;
+          const emptyMsg = document.getElementById("cashflowEmptyMessage");
+
+          const agg = aggregateCashflows();
+
+          if (agg.periods.length === 0) {
+            if (cashflowState.chart) { cashflowState.chart.destroy(); cashflowState.chart = null; }
+            emptyMsg.classList.remove("hidden");
+            return;
+          }
+          emptyMsg.classList.add("hidden");
+
+          const labels = agg.periods.map((p) => periodLabelFor(p, cashflowState.granularity));
+
+          const bucketDatasets = CASHFLOW_BUCKETS
+            .filter((b) => cashflowState.enabledBuckets.has(b.name))
+            .map((b) => {
+              const map = agg.buckets.get(b.name);
+              return {
+                type: "bar",
+                label: b.name,
+                data: agg.periods.map((p) => map.get(p) || 0),
+                backgroundColor: b.color,
+                borderColor: b.color,
+                stack: "cashflow",
+                order: 2,
+                periodKeys: agg.periods, // we use this in onHover
+              };
+            });
+
+          const netData = agg.periods.map((p) => {
+            let net = 0;
+            CASHFLOW_BUCKETS.forEach((b) => {
+              if (!cashflowState.enabledBuckets.has(b.name)) return;
+              const m = agg.buckets.get(b.name);
+              net += m.get(p) || 0;
+            });
+            return net;
+          });
+
+          const netDataset = {
+            type: "line",
+            label: "Net",
+            data: netData,
+            borderColor: "#111827",
+            backgroundColor: "#111827",
+            borderWidth: 2,
+            pointRadius: 3,
+            tension: 0.1,
+            order: 1,
+            yAxisID: "y",
+            periodKeys: agg.periods,
+          };
+
+          const config = {
+            type: "bar",
+            data: { labels, datasets: [...bucketDatasets, netDataset] },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              interaction: { mode: "index", intersect: false },
+              scales: {
+                x: { stacked: true, grid: { display: false } },
+                y: {
+                  stacked: true,
+                  grid: { color: (ctx) => ctx.tick.value === 0 ? "#9CA3AF" : "#E5E7EB" },
+                  ticks: { callback: (v) => `$${v.toLocaleString()}` },
+                },
+              },
+              plugins: {
+                legend: { display: false },
+                tooltip: { enabled: false }, // Replaced by hover panel — wired in Task 7.
+              },
+              onHover: (event, activeElements, chart) => {
+                if (!activeElements.length) return;
+                const idx = activeElements[0].index;
+                const key = agg.periods[idx];
+                showCashflowHover(key, agg);
+              },
+            },
+          };
+
+          if (cashflowState.chart) cashflowState.chart.destroy();
+          cashflowState.chart = new Chart(canvas.getContext("2d"), config);
+        };
+
+        // Stub overridden in Task 7.
+        const showCashflowHover = (key, agg) => {
+          cashflowState.hoverPeriod = key;
         };
 
         // --- Top-right nav menu / view switching ---
