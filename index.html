@@ -79,6 +79,49 @@
           </summary>
           <div id="unrecognizedList" class="mt-2 max-h-64 overflow-y-auto bg-white border border-gray-200 rounded-lg p-3 text-xs font-mono"></div>
         </details>
+
+        <!-- Cash Flow panel -->
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+          <h2 class="text-2xl font-semibold mb-4 text-gray-800">Cash Flow</h2>
+
+          <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            <!-- Left sidebar: controls -->
+            <div class="lg:col-span-1">
+              <h3 class="text-sm font-semibold text-gray-700 mb-2">Granularity</h3>
+              <div id="cashflowGranularity" class="inline-flex rounded-lg border border-gray-200 mb-6 overflow-hidden text-sm" role="tablist">
+                <button type="button" data-granularity="month" class="px-3 py-1 bg-blue-600 text-white" aria-pressed="true">Month</button>
+                <button type="button" data-granularity="year" class="px-3 py-1 bg-white text-gray-700" aria-pressed="false">Year</button>
+              </div>
+
+              <h3 class="text-sm font-semibold text-gray-700 mb-2">Filter Accounts</h3>
+              <div id="cashflowAccountFilters" class="space-y-2 mb-6">
+                <p class="text-gray-500 text-sm">Upload data to see filters.</p>
+              </div>
+
+              <h3 class="text-sm font-semibold text-gray-700 mb-2">Buckets</h3>
+              <div id="cashflowBucketFilters" class="space-y-1"></div>
+            </div>
+
+            <!-- Chart area -->
+            <div class="lg:col-span-2">
+              <div class="chart-container" style="position: relative; height: 360px;">
+                <canvas id="cashflowChart"></canvas>
+              </div>
+              <p id="cashflowEmptyMessage" class="hidden text-sm text-gray-500 mt-4">No cash-flow data yet. Upload an Activity CSV or PDF statement to populate this chart.</p>
+            </div>
+
+            <!-- Hover detail panel -->
+            <div class="lg:col-span-1">
+              <div id="cashflowHoverPanel" class="border border-gray-200 rounded-lg p-3 text-sm bg-gray-50 min-h-[200px]">
+                <div class="flex items-center justify-between mb-2">
+                  <span id="cashflowHoverTitle" class="font-semibold text-gray-700">Hover a bar</span>
+                  <button type="button" id="cashflowHoverClear" class="text-xs text-blue-600 hover:underline hidden">Clear</button>
+                </div>
+                <div id="cashflowHoverBody" class="text-xs text-gray-600">Hover any bar in the chart to see the breakdown for that period.</div>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
       <main id="homeView" class="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -191,6 +234,85 @@
           accountSelectionListeners.forEach((l) => {
             if (l !== source) l.onExternalChange(selectedAccounts);
           });
+        };
+
+        // Cash-flow chart state.
+        const CASHFLOW_BUCKETS = [
+          { name: "Deposits",           color: "#10B981", sign: "in"  },
+          { name: "Dividends/Income",   color: "#34D399", sign: "in"  },
+          { name: "Internal transfers", color: "#6366F1", sign: "any" },
+          { name: "FX",                 color: "#A78BFA", sign: "any" },
+          { name: "Trades",             color: "#9CA3AF", sign: "any" },
+          { name: "Other",              color: "#6B7280", sign: "any" },
+          { name: "Withdrawals",        color: "#EF4444", sign: "out" },
+          { name: "Fees",               color: "#F97316", sign: "out" },
+          { name: "Taxes",              color: "#FBBF24", sign: "out" },
+        ];
+        const cashflowState = {
+          rows: [],                              // raw rows from /api/cash-flows
+          granularity: "month",                  // "month" | "year"
+          enabledBuckets: new Set(CASHFLOW_BUCKETS.map((b) => b.name)),
+          chart: null,
+          hoverPeriod: null,                     // sticky last-hovered period key
+        };
+
+        const renderCashflowBucketFilters = () => {
+          const container = document.getElementById("cashflowBucketFilters");
+          container.innerHTML = "";
+          CASHFLOW_BUCKETS.forEach((b) => {
+            const id = `cashflow-bucket-${b.name.replace(/[^a-z0-9]/gi, "")}`;
+            const wrapper = document.createElement("div");
+            wrapper.className = "flex items-center gap-2";
+
+            const cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.id = id;
+            cb.checked = cashflowState.enabledBuckets.has(b.name);
+            cb.className = "h-4 w-4 rounded border-gray-300";
+            cb.style.accentColor = b.color;
+            cb.addEventListener("change", () => {
+              if (cb.checked) cashflowState.enabledBuckets.add(b.name);
+              else cashflowState.enabledBuckets.delete(b.name);
+              renderCashflowChart();
+            });
+
+            const swatch = document.createElement("span");
+            swatch.style.cssText = `display:inline-block;width:10px;height:10px;border-radius:2px;background:${b.color};`;
+
+            const label = document.createElement("label");
+            label.htmlFor = id;
+            label.className = "text-sm text-gray-700 flex items-center gap-2";
+            label.appendChild(swatch);
+            label.appendChild(document.createTextNode(b.name));
+
+            wrapper.appendChild(cb);
+            wrapper.appendChild(label);
+            container.appendChild(wrapper);
+          });
+        };
+
+        const wireCashflowGranularityToggle = () => {
+          const group = document.getElementById("cashflowGranularity");
+          group.querySelectorAll("button").forEach((btn) => {
+            btn.addEventListener("click", () => {
+              const g = btn.dataset.granularity;
+              if (cashflowState.granularity === g) return;
+              cashflowState.granularity = g;
+              group.querySelectorAll("button").forEach((b) => {
+                const active = b.dataset.granularity === g;
+                b.className = active
+                  ? "px-3 py-1 bg-blue-600 text-white"
+                  : "px-3 py-1 bg-white text-gray-700";
+                b.setAttribute("aria-pressed", String(active));
+              });
+              renderCashflowChart();
+            });
+          });
+        };
+
+        // Placeholder until Task 6 implements the chart.
+        const renderCashflowChart = () => {
+          /* implemented in Task 6 */
         };
 
         // --- Top-right nav menu / view switching ---
@@ -954,6 +1076,8 @@
         // --- Initial Load ---
         refreshData(); // wrapper also runs fetchUploads() + loadFreshness() + loadUnrecognized()
         loadBenchmarkList();
+        renderCashflowBucketFilters();
+        wireCashflowGranularityToggle();
       });
     </script>
   </body>
