@@ -1,6 +1,6 @@
 # Investment Tracker
 
-A small local web app to track a multi-account investment portfolio against market indexes, honestly accounting for deposits and withdrawals.
+A small local web app to track a multi-account **RBC Dominion Securities** portfolio against market indexes, honestly accounting for deposits and withdrawals. It only ingests RBC Dominion Securities CSV exports and PDF statements — no other broker is supported.
 
 ## Features
 
