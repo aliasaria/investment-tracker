@@ -23,6 +23,12 @@ const cases = [
     expected: "external_out",
   },
   {
+    name: "PAY (RRIF retirement payment) is external_out",
+    activity: "Withdrawals & De-Registrations",
+    description: "PAY - Rrif Payment",
+    expected: "external_out",
+  },
+  {
     name: "CSP (RSP spousal contribution) is internal_transfer",
     activity: "Withdrawals & De-Registrations",
     description: "CSP - Rsp Spousal Contribution To Account 100-00001-01 J",
