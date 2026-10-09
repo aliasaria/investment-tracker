@@ -3,6 +3,7 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const Database = require("better-sqlite3");
 const { simulateIndexPortfolio } = require("../lib/simulator");
+const { ensureSchema: ensureMergesSchema, mergeAccounts } = require("../lib/account-merges");
 
 function setupDb({ holdings, cashFlows }) {
   const db = new Database(":memory:");
@@ -20,6 +21,7 @@ function setupDb({ holdings, cashFlows }) {
       UNIQUE(date, account_number, amount_original, description)
     );
   `);
+  ensureMergesSchema(db);
   const ih = db.prepare("INSERT INTO holdings (as_of_date, upload_timestamp, account_number, total_value) VALUES (?, '', ?, ?)");
   for (const h of holdings) ih.run(h.date, h.account, h.value);
   const ic = db.prepare(`INSERT INTO cash_flows (date, account_number, amount_cad, amount_original, currency_original, activity, description, classification, source_upload_timestamp)
@@ -193,4 +195,30 @@ test("cash flow on a non-trading day uses the next available trading close", asy
   // Units: 100000/100 - 10000/100 = 900. End: 900 * 110 = 99000.
   const end = parseFloat(result.data[result.data.length - 1]);
   assert.ok(Math.abs(end - 99000) < 1);
+});
+
+test("per-account scope includes accounts merged into it", async () => {
+  // OLD is closed and re-opened as NEW; NEW starts with the transferred value.
+  const db = setupDb({
+    holdings: [
+      { date: "2024-01-01", account: "OLD", value: 1000 },
+      { date: "2024-06-01", account: "NEW", value: 2500 },
+      { date: "2024-01-01", account: "OTHER", value: 9999 },
+    ],
+    cashFlows: [
+      { date: "2024-03-01", account: "OLD", amount: 500, classification: "external_in" },
+      { date: "2024-03-01", account: "OTHER", amount: 777, classification: "external_in" },
+    ],
+  });
+  mergeAccounts(db, "OLD", "NEW");
+  const yahoo = makeYahoo({ "2024-01-01": 100, "2024-03-01": 100, "2024-06-01": 200 });
+
+  const result = await simulateIndexPortfolio({
+    symbol: "^GSPC", scope: "NEW", db, yahooFinance: yahoo,
+  });
+
+  // Start: 1000/100 = 10 units; +500/100 = 15 units; at 200 -> 3000.
+  assert.deepEqual(result.labels, ["2024-01-01", "2024-06-01"]);
+  assert.deepEqual(result.data, ["1000.00", "3000.00"]);
+  assert.equal(result.cashFlows.length, 1);
 });

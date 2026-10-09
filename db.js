@@ -1,6 +1,7 @@
 // db.js
 // Opens the SQLite database and ensures schema is up to date.
 const Database = require("better-sqlite3");
+const { ensureSchema: ensureMergesSchema } = require("./lib/account-merges");
 
 const db = new Database("investments.db");
 
@@ -57,5 +58,7 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 `);
+
+ensureMergesSchema(db);
 
 module.exports = { db };

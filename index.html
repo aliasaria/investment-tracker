@@ -56,7 +56,8 @@
           >
             <button data-view="home" class="nav-item w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-t-lg" role="menuitem">Home</button>
             <button data-view="activity" class="nav-item w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" role="menuitem">Activity</button>
-            <button data-view="uploads" class="nav-item w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-b-lg" role="menuitem">Uploads</button>
+            <button data-view="uploads" class="nav-item w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" role="menuitem">Uploads</button>
+            <button data-view="accounts" class="nav-item w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-b-lg" role="menuitem">Accounts</button>
           </div>
         </div>
       </header>
@@ -208,6 +209,18 @@
           class="bg-white rounded-xl shadow-sm border border-gray-200 p-4"
         >
           <p class="text-gray-500 text-sm">Loading recent uploads...</p>
+        </div>
+      </section>
+
+      <!-- Accounts view -->
+      <section id="accountsView" class="hidden">
+        <h2 class="text-2xl font-semibold mb-2 text-gray-800">Accounts</h2>
+        <p class="text-sm text-gray-600 mb-4">
+          If the broker re-opened an account under a new number, merge the old account into the new one.
+          Their holdings and activity are then shown as one account. Unmerging restores them as separate accounts; no data is deleted.
+        </p>
+        <div id="accountsList" class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+          <p class="text-gray-500 text-sm">Loading accounts...</p>
         </div>
       </section>
     </div>
@@ -622,11 +635,14 @@
         const homeView = document.getElementById("homeView");
         const activityView = document.getElementById("activityView");
         const uploadsView = document.getElementById("uploadsView");
+        const accountsView = document.getElementById("accountsView");
 
         const setView = (view) => {
           homeView.classList.toggle("hidden", view !== "home");
           activityView.classList.toggle("hidden", view !== "activity");
           uploadsView.classList.toggle("hidden", view !== "uploads");
+          accountsView.classList.toggle("hidden", view !== "accounts");
+          if (view === "accounts") fetchAccounts();
         };
 
         navMenuButton.addEventListener("click", (e) => {
@@ -1236,6 +1252,111 @@
           } catch (err) {
             uploadsList.innerHTML =
               '<p class="text-red-500 text-sm">Error loading uploads.</p>';
+          }
+        }
+
+        // --- Accounts (merge / unmerge) ---
+        const accountsList = document.getElementById("accountsList");
+
+        async function fetchAccounts() {
+          try {
+            const res = await fetch("/api/accounts");
+            const accounts = await res.json();
+            if (!res.ok) throw new Error(accounts.message || "Failed to load accounts");
+            if (!accounts.length) {
+              accountsList.innerHTML = '<p class="text-gray-500 text-sm">No accounts yet.</p>';
+              return;
+            }
+            const labelOf = (a) => a.nickname ? `${a.nickname} (${a.account_number})` : a.account_number;
+            const range = (first, last) => first ? `${first} → ${last}` : "—";
+            // Only canonical (unmerged) accounts can be merge targets.
+            const targets = accounts.filter((a) => !a.merged_into);
+
+            accountsList.innerHTML = `
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="text-left text-xs text-gray-500 border-b border-gray-200">
+                    <th class="py-2 pr-2">Account</th>
+                    <th class="py-2 pr-2">Holdings</th>
+                    <th class="py-2 pr-2">Activity</th>
+                    <th class="py-2 pr-2 text-right">Latest value</th>
+                    <th class="py-2">Merge</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${accounts.map((a) => `
+                    <tr class="border-b border-gray-100 ${a.merged_into ? "text-gray-400" : ""}">
+                      <td class="py-2 pr-2">${esc(labelOf(a))}</td>
+                      <td class="py-2 pr-2 font-mono text-xs">${esc(range(a.holdings_first_date, a.holdings_last_date))}</td>
+                      <td class="py-2 pr-2 font-mono text-xs">${esc(range(a.activity_first_date, a.activity_last_date))}</td>
+                      <td class="py-2 pr-2 text-right">${a.latest_value == null ? "—" : esc(formatCAD(a.latest_value))}</td>
+                      <td class="py-2">
+                        ${a.merged_into
+                          ? `<span class="text-xs">→ ${esc(a.merged_into_nickname || a.merged_into)}</span>
+                             <button class="unmerge-btn ml-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded text-xs font-semibold" data-account="${esc(a.account_number)}">Unmerge</button>`
+                          : `<select class="merge-target border border-gray-300 rounded px-1 py-1 text-xs" data-account="${esc(a.account_number)}">
+                               <option value="">Merge into…</option>
+                               ${targets.filter((t) => t.account_number !== a.account_number)
+                                 .map((t) => `<option value="${esc(t.account_number)}">${esc(labelOf(t))}</option>`).join("")}
+                             </select>
+                             <button class="merge-btn ml-1 bg-blue-100 hover:bg-blue-200 text-blue-800 px-2 py-1 rounded text-xs font-semibold" data-account="${esc(a.account_number)}">Merge</button>`}
+                      </td>
+                    </tr>`).join("")}
+                </tbody>
+              </table>
+            `;
+
+            const afterChange = async () => {
+              // A per-account index scope may now point at a merged-away account.
+              currentScope = "all";
+              scopeIndicator.classList.add("hidden");
+              await refreshData();
+              await loadCashflows();
+              await fetchAccounts();
+            };
+
+            accountsList.querySelectorAll(".merge-btn").forEach((btn) => {
+              btn.addEventListener("click", async () => {
+                const from = btn.dataset.account;
+                const select = accountsList.querySelector(`.merge-target[data-account="${CSS.escape(from)}"]`);
+                const into = select.value;
+                if (!into) return alert("Pick an account to merge into.");
+                const fromLabel = labelOf(accounts.find((a) => a.account_number === from));
+                const intoLabel = labelOf(accounts.find((a) => a.account_number === into));
+                if (!confirm(`Treat ${fromLabel} as part of ${intoLabel}?`)) return;
+                btn.disabled = true;
+                try {
+                  const resp = await fetch("/api/account-merges", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ from, into }),
+                  });
+                  const result = await resp.json();
+                  if (!resp.ok) throw new Error(result.message || "Merge failed");
+                  await afterChange();
+                } catch (err) {
+                  alert("Error merging accounts: " + err.message);
+                  btn.disabled = false;
+                }
+              });
+            });
+
+            accountsList.querySelectorAll(".unmerge-btn").forEach((btn) => {
+              btn.addEventListener("click", async () => {
+                btn.disabled = true;
+                try {
+                  const resp = await fetch(`/api/account-merges/${encodeURIComponent(btn.dataset.account)}`, { method: "DELETE" });
+                  const result = await resp.json();
+                  if (!resp.ok) throw new Error(result.message || "Unmerge failed");
+                  await afterChange();
+                } catch (err) {
+                  alert("Error unmerging account: " + err.message);
+                  btn.disabled = false;
+                }
+              });
+            });
+          } catch (err) {
+            accountsList.innerHTML = '<p class="text-red-500 text-sm">Error loading accounts.</p>';
           }
         }
 
