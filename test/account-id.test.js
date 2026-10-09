@@ -1,6 +1,6 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { splitAccountField, normalizeAccountNumber } = require("../lib/account-id");
+const { splitAccountField, normalizeAccountNumber, counterpartyAccount } = require("../lib/account-id");
 
 test("splits 'NNNN - Nickname' into account number and nickname", () => {
   const result = splitAccountField("12345678 - Joint");
@@ -45,4 +45,12 @@ test("splitAccountField normalizes the account-number side", () => {
   const { accountNumber, nickname } = splitAccountField("111-22222-3-4 - Sample Trust");
   assert.equal(accountNumber, "11122222");
   assert.equal(nickname, "Sample Trust");
+});
+
+test("counterpartyAccount extracts the other account from transfer descriptions", () => {
+  assert.equal(counterpartyAccount("TFI - Account Transfer From Account 400-00004-04"), "40000004");
+  assert.equal(counterpartyAccount("TFO - As Of 01/15/24 Account Transfer To Account 300-00003-03"), "30000003");
+  assert.equal(counterpartyAccount("CSP - Rsp Spousal Contribution To Account 100-00001-01 J"), "10000001");
+  assert.equal(counterpartyAccount("WIR - Eft"), null);
+  assert.equal(counterpartyAccount(null), null);
 });

@@ -25,8 +25,8 @@ function setupDb({ holdings, cashFlows }) {
   const ih = db.prepare("INSERT INTO holdings (as_of_date, upload_timestamp, account_number, total_value) VALUES (?, '', ?, ?)");
   for (const h of holdings) ih.run(h.date, h.account, h.value);
   const ic = db.prepare(`INSERT INTO cash_flows (date, account_number, amount_cad, amount_original, currency_original, activity, description, classification, source_upload_timestamp)
-                         VALUES (?, ?, ?, ?, 'CAD', '', '', ?, '')`);
-  for (const c of cashFlows) ic.run(c.date, c.account, c.amount, c.amount, c.classification);
+                         VALUES (?, ?, ?, ?, 'CAD', '', ?, ?, '')`);
+  for (const c of cashFlows) ic.run(c.date, c.account, c.amount, c.amount, c.description || "", c.classification);
   return db;
 }
 
@@ -221,4 +221,32 @@ test("per-account scope includes accounts merged into it", async () => {
   assert.deepEqual(result.labels, ["2024-01-01", "2024-06-01"]);
   assert.deepEqual(result.data, ["1000.00", "3000.00"]);
   assert.equal(result.cashFlows.length, 1);
+});
+
+test("per-account scope ignores transfers between accounts merged into it", async () => {
+  // Accounts 10000001 (old) and 20000002 (new) are merged; 30000003 is separate.
+  const db = setupDb({
+    holdings: [
+      { date: "2024-01-01", account: "10000001", value: 1000 },
+      { date: "2024-06-01", account: "20000002", value: 1000 },
+    ],
+    cashFlows: [
+      // Only the receiving leg of the old -> new move is on file.
+      { date: "2024-03-01", account: "20000002", amount: 400, classification: "internal_transfer",
+        description: "TFI - Account Transfer From Account 100-00001-01" },
+      // A transfer out to an unmerged account is real at per-account scope.
+      { date: "2024-04-01", account: "20000002", amount: -100, classification: "internal_transfer",
+        description: "TFO - Account Transfer To Account 300-00003-03" },
+    ],
+  });
+  mergeAccounts(db, "10000001", "20000002");
+  const yahoo = makeYahoo({ "2024-01-01": 100, "2024-03-01": 100, "2024-04-01": 100, "2024-06-01": 100 });
+
+  const result = await simulateIndexPortfolio({
+    symbol: "^GSPC", scope: "20000002", db, yahooFinance: yahoo,
+  });
+
+  // Flat index: 1000 start, -100 to the other account, the internal 400 ignored.
+  assert.deepEqual(result.data, ["1000.00", "900.00"]);
+  assert.deepEqual(result.cashFlows.map((cf) => cf.amount_cad), [-100]);
 });
