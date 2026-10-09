@@ -14,6 +14,7 @@ const { backupDatabase } = require("../lib/db-backup");
 const { ingestHoldings } = require("../lib/holdings-ingest");
 const { ingestActivity } = require("../lib/activity-ingest");
 const { ingestPdfBuffer } = require("../lib/pdf-ingest");
+const { removeCrossSourceDuplicates } = require("../lib/cashflow-dedupe");
 
 const router = express.Router();
 const upload = multer({ dest: "uploads/" });
@@ -71,12 +72,20 @@ async function processOneFile(file, yahooFinance) {
     result.inserted, result.skipped,
   );
 
+  // PDF statements and Activity CSVs overlap; drop PDF copies of CSV rows.
+  // Runs after recordUpload because it identifies sources via uploaded_files.
+  let duplicatesRemoved = 0;
+  if (type === "pdf" || type === "activity") {
+    duplicatesRemoved = removeCrossSourceDuplicates(db);
+  }
+
   return {
     filename: file.originalname,
     csv_type: type,
     inserted: result.inserted,
     skipped: result.skipped,
     upload_timestamp: uploadTimestamp,
+    duplicates_removed: duplicatesRemoved,
   };
 }
 
