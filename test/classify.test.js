@@ -137,9 +137,15 @@ const cases = [
     expected: "fx",
   },
   {
-    name: "Reorganization stays as 'other' (rare corporate actions)",
+    name: "Reorganization cash in lieu (CIL) is income",
     activity: "Reorganization",
-    description: "CIL - some corporate action",
+    description: "CIL - Sample Corp Common Stock Cash In Lieu Of .50000 From Sec# X123",
+    expected: "income",
+  },
+  {
+    name: "Other Reorganization stays as 'other' (rare corporate actions)",
+    activity: "Reorganization",
+    description: "REO - some corporate action",
     expected: "other",
   },
 ];
