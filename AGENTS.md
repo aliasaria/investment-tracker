@@ -90,6 +90,8 @@ Uniqueness: `(date, account_name, amount_original, description)` — re-uploadin
 
 **`uploaded_files`** — audit log of every CSV ingested.
 
+**`account_merges`** — maps an old broker account number to the one it was merged into (`account_number` → `merged_into`), for accounts the broker re-opened under a new number. Managed from the Accounts page (`lib/account-merges.js`, `routes/accounts.js`). Rows in `holdings`/`cash_flows` are never rewritten; queries fold them via `LEFT JOIN account_merges m ON m.account_number = x.account_number` and `COALESCE(m.merged_into, x.account_number)`. The mapping is kept one level deep.
+
 ### `classification` enum
 
 | value | meaning | moves simulator? |

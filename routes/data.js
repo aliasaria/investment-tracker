@@ -1,19 +1,23 @@
 // routes/data.js
 const express = require("express");
 const { db } = require("../db");
+const { canonicalExpr } = require("../lib/account-merges");
 
 const router = express.Router();
 
 router.get("/data", (req, res) => {
   try {
+    // Merged accounts (see lib/account-merges.js) are folded into their
+    // canonical account number and labelled with its nickname.
     const rows = db.prepare(`
       SELECT h.as_of_date,
-             h.account_number,
-             COALESCE(a.nickname, h.account_number) AS account_label,
+             ${canonicalExpr("h")} AS account_number,
+             COALESCE(a.nickname, ${canonicalExpr("h")}) AS account_label,
              SUM(h.total_value) AS value
       FROM holdings h
-      LEFT JOIN account_aliases a ON a.account_number = h.account_number
-      GROUP BY h.as_of_date, h.account_number, a.nickname
+      LEFT JOIN account_merges m ON m.account_number = h.account_number
+      LEFT JOIN account_aliases a ON a.account_number = ${canonicalExpr("h")}
+      GROUP BY h.as_of_date, ${canonicalExpr("h")}
       ORDER BY h.as_of_date ASC
     `).all();
 
