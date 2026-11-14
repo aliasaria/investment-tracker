@@ -58,14 +58,14 @@ Use `-readonly` unless explicitly asked to modify. Never run schema migrations w
 
 ### Schema
 
-**`holdings`** — snapshots of positions at a point in time. Re-uploading a same-day file upserts via `holdings_uniq (as_of_date, account_name, symbol, name)`.
+**`holdings`** — snapshots of positions at a point in time. Re-uploading a same-day file upserts via `holdings_uniq (as_of_date, account_number, COALESCE(symbol,''), COALESCE(name,''))`.
 
 | column | meaning |
 |---|---|
 | `id` | autoincrement |
 | `as_of_date` | ISO date of the snapshot (YYYY-MM-DD); derived from upload date |
 | `upload_timestamp` | ISO datetime of the upload that produced this row |
-| `account_name` | e.g. `RRSP - Joe`, `TFSA - Joe`, `Joint` |
+| `account_number` | canonical broker account number (digits only, 8 chars); see `lib/account-id.js`. Display names live in `account_aliases` |
 | `symbol` | ticker (nullable for cash) |
 | `name` | security name |
 | `product_type` | broker's category string |
@@ -76,7 +76,7 @@ Use `-readonly` unless explicitly asked to modify. Never run schema migrations w
 | column | meaning |
 |---|---|
 | `date` | ISO date (YYYY-MM-DD) |
-| `account_name` | as above |
+| `account_number` | as above |
 | `amount_cad` | **canonical CAD amount** (signed; positive in, negative out) |
 | `amount_original` | amount in the original currency |
 | `currency_original` | `CAD` or `USD` |
@@ -86,9 +86,11 @@ Use `-readonly` unless explicitly asked to modify. Never run schema migrations w
 | `classification` | one of the enum values below |
 | `source_upload_timestamp` | FK-ish link to `uploaded_files.upload_timestamp` |
 
-Uniqueness: `(date, account_name, amount_original, description)` — re-uploading overlapping activity is idempotent.
+Uniqueness: `(date, account_number, amount_original, description)` — re-uploading overlapping activity is idempotent.
 
-**`uploaded_files`** — audit log of every CSV ingested.
+**`uploaded_files`** — audit log of every file ingested (`csv_type` is `holdings`, `activity`, or `pdf`).
+
+**`account_aliases`** — `account_number` → `nickname`, the display name. The broker's `Account` column (`"NNNNNNNN - Nickname"`) is split at ingest by `lib/account-id.js`: the number goes into `holdings`/`cash_flows`, and the nickname is upserted here. Join it on the *canonical* number to label output.
 
 **`account_merges`** — maps an old broker account number to the one it was merged into (`account_number` → `merged_into`), for accounts the broker re-opened under a new number. Managed from the Accounts page (`lib/account-merges.js`, `routes/accounts.js`). Rows in `holdings`/`cash_flows` are never rewritten; queries fold them via `LEFT JOIN account_merges m ON m.account_number = x.account_number` and `COALESCE(m.merged_into, x.account_number)`. The mapping is kept one level deep.
 
@@ -106,15 +108,37 @@ Uniqueness: `(date, account_name, amount_original, description)` — re-uploadin
 
 ### Cookbook queries
 
+Per-account queries fold merged accounts into their canonical number and label it with the nickname, the same way `routes/data.js` does:
+
+```sql
+-- canonical account: COALESCE(m.merged_into, x.account_number)
+LEFT JOIN account_merges  m ON m.account_number = x.account_number
+LEFT JOIN account_aliases a ON a.account_number = COALESCE(m.merged_into, x.account_number)
+```
+
 Latest portfolio value per account:
 
 ```sql
-WITH latest AS (
-  SELECT account_name, MAX(as_of_date) AS d FROM holdings GROUP BY account_name
-)
-SELECT h.account_name, h.as_of_date, ROUND(SUM(h.total_value), 2) AS value_cad
-FROM holdings h JOIN latest l ON l.account_name = h.account_name AND l.d = h.as_of_date
-GROUP BY h.account_name ORDER BY value_cad DESC;
+WITH h AS (
+  SELECT COALESCE(m.merged_into, h.account_number) AS acct, h.as_of_date, h.total_value
+  FROM holdings h LEFT JOIN account_merges m ON m.account_number = h.account_number
+),
+latest AS (SELECT acct, MAX(as_of_date) AS d FROM h GROUP BY acct)
+SELECT COALESCE(a.nickname, h.acct) AS account, h.as_of_date, ROUND(SUM(h.total_value), 2) AS value_cad
+FROM h JOIN latest l ON l.acct = h.acct AND l.d = h.as_of_date
+LEFT JOIN account_aliases a ON a.account_number = h.acct
+GROUP BY h.acct ORDER BY value_cad DESC;
+```
+
+Change between two snapshots, by position (for questions like "how did the portfolio do this week?"):
+
+```sql
+SELECT symbol, name,
+       ROUND(SUM(CASE WHEN as_of_date = :d0 THEN total_value ELSE 0 END)) AS v0,
+       ROUND(SUM(CASE WHEN as_of_date = :d1 THEN total_value ELSE 0 END)) AS v1,
+       ROUND(SUM(CASE WHEN as_of_date = :d1 THEN total_value ELSE -total_value END)) AS chg
+FROM holdings WHERE as_of_date IN (:d0, :d1)
+GROUP BY symbol, name ORDER BY chg;
 ```
 
 Total external deposits / withdrawals by year:
@@ -129,9 +153,14 @@ FROM cash_flows GROUP BY year ORDER BY year;
 Dividend / interest income by year and account:
 
 ```sql
-SELECT substr(date,1,4) AS year, account_name, ROUND(SUM(amount_cad),2) AS income_cad
-FROM cash_flows WHERE classification='income'
-GROUP BY year, account_name ORDER BY year, income_cad DESC;
+SELECT substr(cf.date,1,4) AS year,
+       COALESCE(a.nickname, COALESCE(m.merged_into, cf.account_number)) AS account,
+       ROUND(SUM(cf.amount_cad),2) AS income_cad
+FROM cash_flows cf
+LEFT JOIN account_merges  m ON m.account_number = cf.account_number
+LEFT JOIN account_aliases a ON a.account_number = COALESCE(m.merged_into, cf.account_number)
+WHERE cf.classification='income'
+GROUP BY year, COALESCE(m.merged_into, cf.account_number) ORDER BY year, income_cad DESC;
 ```
 
 Fees paid (best-effort: `external_out` rows whose `activity` is Fees/Taxes):
@@ -145,11 +174,13 @@ GROUP BY year, activity ORDER BY year;
 Top 10 current holdings across the whole portfolio:
 
 ```sql
-WITH latest AS (
-  SELECT account_name, MAX(as_of_date) AS d FROM holdings GROUP BY account_name
-)
+WITH h AS (
+  SELECT COALESCE(m.merged_into, h.account_number) AS acct, h.*
+  FROM holdings h LEFT JOIN account_merges m ON m.account_number = h.account_number
+),
+latest AS (SELECT acct, MAX(as_of_date) AS d FROM h GROUP BY acct)
 SELECT h.symbol, h.name, ROUND(SUM(h.total_value),2) AS value_cad
-FROM holdings h JOIN latest l ON l.account_name=h.account_name AND l.d=h.as_of_date
+FROM h JOIN latest l ON l.acct = h.acct AND l.d = h.as_of_date
 WHERE h.symbol IS NOT NULL
 GROUP BY h.symbol, h.name ORDER BY value_cad DESC LIMIT 10;
 ```
@@ -157,8 +188,9 @@ GROUP BY h.symbol, h.name ORDER BY value_cad DESC LIMIT 10;
 Unrecognized activity that needs a classify-rule (also visible in UI):
 
 ```sql
-SELECT date, account_name, activity, description, amount_cad
-FROM cash_flows WHERE classification='other' ORDER BY date DESC LIMIT 50;
+SELECT cf.date, COALESCE(a.nickname, cf.account_number) AS account, cf.activity, cf.description, cf.amount_cad
+FROM cash_flows cf LEFT JOIN account_aliases a ON a.account_number = cf.account_number
+WHERE cf.classification='other' ORDER BY cf.date DESC LIMIT 50;
 ```
 
 Net external cash flow over the last 12 months (the number the simulator cares about):
@@ -173,8 +205,9 @@ WHERE classification IN ('external_in','external_out')
 Activity coverage check — months with any cash flow per account:
 
 ```sql
-SELECT account_name, substr(date,1,7) AS month, COUNT(*) AS rows
-FROM cash_flows GROUP BY account_name, month ORDER BY account_name, month;
+SELECT COALESCE(a.nickname, cf.account_number) AS account, substr(cf.date,1,7) AS month, COUNT(*) AS rows
+FROM cash_flows cf LEFT JOIN account_aliases a ON a.account_number = cf.account_number
+GROUP BY cf.account_number, month ORDER BY account, month;
 ```
 
 ### Query gotchas
@@ -184,7 +217,10 @@ FROM cash_flows GROUP BY account_name, month ORDER BY account_name, month;
 - `internal_transfer` is real at per-account scope but cancels at portfolio scope — exclude it from whole-portfolio cash-flow math.
 - `income` and `trade` are already reflected in subsequent `holdings` snapshots; do **not** add them to external cash flow.
 - Dates are ISO strings, lexically sortable. Don't `CAST` them.
-- `account_name` is freeform broker text — group on it as-is; don't normalize.
+- Group on `account_number` (folded through `account_merges` for per-account views), never on `nickname`: nicknames are display-only and the user may rename them. Numbers are already normalized at ingest by `lib/account-id.js`.
+- "Latest snapshot per account" also picks up closed accounts that were never merged, along with their last, stale balance. Before reporting a portfolio total, check each account's latest `as_of_date`. Drop accounts whose latest date is well behind the newest upload, or ask the user about them.
+- Snapshot dates differ per account. A date can hold an upload for just one account, so summing a single `as_of_date` can understate the portfolio. Use each account's latest date, or check `COUNT(DISTINCT account_number)` per date first.
+- Holdings has no quantity column. A change between snapshots mixes price, USD→CAD FX, and any trades in between. Check `cash_flows` for `trade` rows in that window, and note that activity coverage ends at the last activity upload.
 
 ## Design decisions
 
