@@ -7,8 +7,26 @@ const cases = [
   {
     name: "WHD prefix is external_out",
     activity: "Withdrawals & De-Registrations",
-    description: "WHD - 12263.22(u$ To C$ @0.733)",
+    description: "WHD - Withdrawal to External Bank",
     expected: "external_out",
+  },
+  {
+    name: "WHD USD->CAD conversion leg is fx, not a withdrawal",
+    activity: "Withdrawals & De-Registrations",
+    description: "WHD - 100.00(u$ To C$ @0.7400)",
+    expected: "fx",
+  },
+  {
+    name: "DEP USD->CAD conversion leg is fx, not a deposit",
+    activity: "Deposits & Contributions",
+    description: "DEP - 74.00(u$ To C$ @1.3500)",
+    expected: "fx",
+  },
+  {
+    name: "WHD CAD->USD conversion leg is fx",
+    activity: "Withdrawals & De-Registrations",
+    description: "WHD - 74.00(c$ To U$ @1.3500)",
+    expected: "fx",
   },
   {
     name: "WIR prefix is external_out",
